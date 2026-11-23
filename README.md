@@ -85,13 +85,16 @@ The chain is **tamper-evident, not tamper-proof**. It catches a record that was 
 
 ## Performance
 
-Claude Code starts a new process for every hook, so startup time is what counts. `bbx` is compiled with Native AOT. Median of 50 runs on GitHub-hosted runners:
+Claude Code starts a new process for every hook, so startup time is what counts. `bbx` is compiled with Native AOT and ships as a single 5 MB executable. Time per hook call, from starting the process to its exit, with the payload piped in:
 
-| Linux | Windows | macOS |
+| Machine | Median | p95 |
 |---|---|---|
-| 7.8 ms | 24 ms | 51 ms |
+| Windows 10 desktop (author's machine), 100 runs | 29.5 ms | 32–36 ms |
+| GitHub-hosted Linux runner, 50 runs | 7.8 ms | 9.7 ms |
+| GitHub-hosted Windows runner, 50 runs | 24 ms | 26.7 ms |
+| GitHub-hosted macOS runner, 50 runs | 51 ms | 90 ms |
 
-macOS runners are slow to start processes, and the numbers vary from run to run. Measure your own machine with `pwsh scripts/bench-hook.ps1 -Bbx <path-to-bbx>`.
+The same build without AOT takes 181 ms on the Windows desktop. macOS runners are slow to start processes, and their numbers vary from run to run. Measure your own machine with `pwsh scripts/bench-hook.ps1 -Bbx <path-to-bbx>`.
 
 ## It recorded its own creation
 
