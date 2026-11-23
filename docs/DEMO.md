@@ -27,6 +27,13 @@ Start a new Claude Code session in `orders-demo` (recording starts at `SessionSt
 
 ## Capture
 
-- GIF: any screen recorder; crop to the terminal; 10 seconds; 1200 px wide; save as `docs/images/demo.gif`.
-- Screenshot: open the HTML report at about 1100 px wide and capture the summary and the first prompt; save as `docs/images/report.png`.
-- Before committing either file, check that no paths, user names or secrets are visible.
+The README images in `docs/images/` came from this script, run on 2026-11-23 with AgentBlackbox 0.1.1 from nuget.org:
+
+- The two prompts ran headless (`claude -p "..." --model sonnet`, then `claude -p --continue "..."`) in a project outside the home directory, so no user paths show up.
+- After the session, one line of `OrderService.cs` was edited by hand so `bbx blame` shows a human line.
+- `report.png` is the HTML report, and `timeline.png` and `blame.png` are the plain (`NO_COLOR=1`) command output set in a terminal-styled page. All three were captured with headless Edge at 2x (`msedge --headless=new --screenshot --force-device-scale-factor=2`).
+- `banner.png` is rendered from `banner.svg` the same way. The README uses the PNG because nuget.org doesn't show SVG images.
+
+A GIF is still welcome: any screen recorder, cropped to the terminal, about 10 seconds and 1200 px wide, saved as `docs/images/demo.gif`.
+
+Before committing any image, check that no paths, user names or secrets are visible.

@@ -1,10 +1,23 @@
-# agent-blackbox
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sayinbrahim/agent-blackbox/main/docs/images/banner.png" alt="agent-blackbox: a flight recorder for AI coding agents" width="100%">
+</p>
 
-**A flight recorder for AI coding agents.**
+<p align="center">
+  <a href="https://www.nuget.org/packages/AgentBlackbox"><img src="https://img.shields.io/nuget/v/AgentBlackbox?color=f5a524&label=nuget" alt="NuGet version"></a>
+  <a href="https://www.nuget.org/packages/AgentBlackbox"><img src="https://img.shields.io/nuget/dt/AgentBlackbox?color=4fd1c5" alt="NuGet downloads"></a>
+  <a href="https://github.com/sayinbrahim/agent-blackbox/actions/workflows/ci.yml"><img src="https://github.com/sayinbrahim/agent-blackbox/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
+  <img src="https://img.shields.io/badge/Native%20AOT-~16%20ms%20per%20hook-0b0e13" alt="Native AOT, about 16 ms per hook">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
 
 `bbx` records what Claude Code does in your repository into a hash-chained log you can verify. When something breaks, it writes the incident report. It can also tell you, line by line, whether code came from the agent, from which session and from which prompt.
 
-<!-- Demo GIF goes here once recorded: see docs/DEMO.md -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sayinbrahim/agent-blackbox/main/docs/images/report.png" alt="bbx flight report: a two-prompt Claude Code session marked STALE, with a failed test command and files edited several times" width="820">
+  <br>
+  <sub>A real two-prompt Claude Code session in a demo project. The second prompt said not to run the tests, so the report marks the session STALE.</sub>
+</p>
 
 ## Why
 
@@ -24,10 +37,22 @@ Then use Claude Code as usual. When you want to look:
 ```
 bbx timeline          # what happened in the latest session
 bbx report            # HTML incident report
-bbx blame src/Orders/OrderService.cs:57
+bbx blame src/Orders/OrderService.cs:5
 ```
 
 With the .NET 10 SDK you can also run it without installing: `dnx AgentBlackbox -- timeline`.
+
+## What you get
+
+**`bbx timeline`** groups every action under the prompt that caused it, and flags failures, files the agent kept rewriting, and tests that went stale.
+
+<img src="https://raw.githubusercontent.com/sayinbrahim/agent-blackbox/main/docs/images/timeline.png" alt="bbx timeline output: two prompts with their tool calls, a failed dotnet test, a resumed session and a STALE warning" width="820">
+
+**`bbx blame`** answers "who wrote this line?" for a whole file or a single line: the session, the prompt and the tool call.
+
+<img src="https://raw.githubusercontent.com/sayinbrahim/agent-blackbox/main/docs/images/blame.png" alt="bbx blame output: 93% AI, 7% human, and line 5 traced to the prompt 'Make the retry count 5'" width="700">
+
+<sub>Same demo session. Line 6 was edited outside the agent afterwards, so it counts as human.</sub>
 
 ## What it records
 
@@ -35,7 +60,7 @@ One JSONL file per session in `.blackbox/sessions/`. Each line holds the hook ev
 
 - For a file edit it keeps the repo-relative path, the diff (up to 16 KB), how many lines were added and removed, normalized hashes of the added lines, and SHA-256 hashes of the file before and after. It never stores the whole file.
 - For a command it keeps the command, its exit code and the last 1 KB of output, and it notes when the command was a test run or a build.
-- For a prompt it keeps the full text by default. Set `record_prompts` to `hash` or `off` if you'd rather it didn't.
+- For a prompt it keeps the full text by default. Set `record_prompts` to `hash` or `off` if you'd rather it didn't. Background task notifications are recorded separately and never count as prompts.
 
 ### Privacy
 
@@ -74,6 +99,18 @@ Only commands the agent runs through its own tools are visible. Tests you run in
 
 ## How it works
 
+```mermaid
+flowchart LR
+    A["Claude Code"] -- "hook event (JSON on stdin)" --> B["bbx hook"]
+    B --> C["redact secrets,<br/>home dir, user name"]
+    C --> D[(".blackbox/sessions/*.jsonl<br/>hash-chained")]
+    D --> E["timeline · report"]
+    D --> F["blame · investigate"]
+    D --> G["verify"]
+```
+
+Claude Code starts `bbx hook <event>` for each session start, prompt, tool call and session end. `bbx` turns the payload into a record, redacts it, and appends it under a file lock:
+
 ```
 record[n].hash = SHA256( record[n].prev + "\n" + canonical_json(record[n] without hash) )
 record[n].prev = record[n-1].hash            record[0].prev = "sha256:GENESIS"
@@ -81,7 +118,7 @@ record[n].prev = record[n-1].hash            record[0].prev = "sha256:GENESIS"
 
 The chain is **tamper-evident, not tamper-proof**. It catches a record that was edited, deleted or moved. Anyone with write access can still regenerate the whole chain. Anchoring the chain head in git commits is planned for v0.2.
 
-`bbx blame` matches whitespace-normalized line hashes from recorded agent edits of the same file. A line the agent wrote and nobody changed is found even if it moved within the file. A line edited afterwards counts as human. Files the agent never touched while recording count as human or unrecorded.
+`bbx blame` matches whitespace-normalized line hashes from recorded agent edits of the same file. A line the agent wrote and nobody changed is found even if it moved within the file. A line edited afterwards counts as human. Files the agent never touched while recording count as human or unrecorded. Edits the agent makes through the shell (`sed`, a script) are not file edits to the hooks, so those lines count as human too.
 
 ## Performance
 

@@ -19,7 +19,7 @@ internal static class Fmt
 
     public static bool Failed(JsonObject r) => r.Event() == "PostToolUseFailure";
 
-    public static bool IsSystem(JsonObject r) => r.Kind() is "SessionStarted" or "SessionEnded" or "AgentStopped";
+    public static bool IsSystem(JsonObject r) => r.Kind() is "SessionStarted" or "SessionEnded" or "AgentStopped" || r.IsNotification();
 
     public const string Limits =
         "Recorded evidence only. Commands run outside the agent, and edits made in other tools, are not visible. " +
@@ -89,11 +89,13 @@ public static class HtmlReport
                 {
                     text = text[..2000] + "…";
                 }
-                sb.Append($"<div class=\"ph\">PROMPT #{p.Seq()}<span>{SessionAnalysis.Clock(p)} · {g.Actions.Count(r => r.IsToolResult())} tool calls</span></div><div class=\"pt\">{E(text)}</div>");
+                sb.Append($"<div class=\"ph\">PROMPT #{g.Number}<span>{SessionAnalysis.Clock(p)} · {g.Actions.Count(r => r.IsToolResult())} tool calls</span></div><div class=\"pt\">{E(text)}</div>");
             }
             else
             {
-                sb.Append("<div class=\"ph\">BEFORE FIRST PROMPT<span>actions recorded without a prompt</span></div>");
+                sb.Append(g.Resumed
+                    ? "<div class=\"ph\">SESSION RESUMED<span>same session, continued later</span></div>"
+                    : "<div class=\"ph\">BEFORE FIRST PROMPT<span>actions recorded without a prompt</span></div>");
             }
             sb.Append("</summary>");
             if (g.Actions.Count > 0)
@@ -135,7 +137,7 @@ public static class HtmlReport
         var sb = new StringBuilder("<div class=\"tablewrap\"><table><thead><tr><th>File</th><th>Edits</th><th>Added</th><th>Removed</th><th>Prompts</th></tr></thead><tbody>");
         foreach (var f in a.Files)
         {
-            sb.Append($"<tr><td>{E(f.File)}{(f.Created ? " <span class=\"t\">(new)</span>" : "")}</td><td class=\"num\">{f.Edits}</td><td class=\"num plus\">+{f.Added}</td><td class=\"num minus\">−{f.Removed}</td><td>{E(string.Join(", ", f.PromptSeqs.Select(p => "#" + p)))}</td></tr>");
+            sb.Append($"<tr><td>{E(f.File)}{(f.Created ? " <span class=\"t\">(new)</span>" : "")}</td><td class=\"num\">{f.Edits}</td><td class=\"num plus\">+{f.Added}</td><td class=\"num minus\">−{f.Removed}</td><td>{E(string.Join(", ", f.PromptNumbers.Select(p => "#" + p)))}</td></tr>");
         }
         return sb.Append("</tbody></table></div>").ToString();
     }
@@ -175,8 +177,8 @@ public static class MarkdownReport
         foreach (var g in a.Groups)
         {
             sb.AppendLine(g.Prompt is { } p
-                ? $"**#{p.Seq()} · {SessionAnalysis.Clock(p)}** {SessionAnalysis.OneLine(SessionAnalysis.Describe(p), 200)}"
-                : "**Before first prompt**").AppendLine();
+                ? $"**#{g.Number} · {SessionAnalysis.Clock(p)}** {SessionAnalysis.OneLine(SessionAnalysis.Describe(p), 200)}"
+                : g.Resumed ? "**Session resumed**" : "**Before first prompt**").AppendLine();
             foreach (var r in g.Actions.Where(r => !Fmt.IsSystem(r)))
             {
                 sb.AppendLine($"- `{SessionAnalysis.Clock(r)}` {(Fmt.Failed(r) ? "✖" : "✔")} {SessionAnalysis.Describe(r)}");
@@ -203,7 +205,7 @@ public static class MarkdownReport
             sb.AppendLine("| File | Edits | + | − | Prompts |").AppendLine("|---|--:|--:|--:|---|");
             foreach (var f in a.Files)
             {
-                sb.AppendLine($"| `{f.File}`{(f.Created ? " (new)" : "")} | {f.Edits} | {f.Added} | {f.Removed} | {string.Join(", ", f.PromptSeqs.Select(p => "#" + p))} |");
+                sb.AppendLine($"| `{f.File}`{(f.Created ? " (new)" : "")} | {f.Edits} | {f.Added} | {f.Removed} | {string.Join(", ", f.PromptNumbers.Select(p => "#" + p))} |");
             }
         }
         sb.AppendLine().AppendLine($"<sub>Recorded by agent-blackbox v{bbxVersion} — chain head `{Fmt.ChainHead(s)}`. {Fmt.Limits}</sub>");
@@ -243,11 +245,11 @@ public static class MarkdownReport
             sb.AppendLine($"- Chain: {Fmt.Chain(s)}");
             sb.AppendLine($"- Verification at commit time: **{freshness.Label}**: {freshness.Message}");
             var files = inv.Files.Where(f => f.Records.Any(r => r.Session == s)).Select(f => f.File).ToHashSet();
-            var prompts = s.Records.Where(r => r.IsFileChange() && files.Contains(r.O("data").S("file") ?? "")).Select(r => r.I("prompt_seq")).OfType<int>().Distinct();
+            var prompts = s.Records.Where(r => r.IsFileChange() && files.Contains(r.O("data").S("file") ?? "")).Select(s.PromptOf).OfType<JsonObject>().Distinct();
             sb.AppendLine("- Prompts behind the changes:");
-            foreach (var seq in prompts)
+            foreach (var p in prompts)
             {
-                sb.AppendLine($"  - #{seq}: {SessionAnalysis.OneLine(s.PromptAt(seq) is { } p ? SessionAnalysis.Describe(p) : "(prompt not found)", 200)}");
+                sb.AppendLine($"  - #{s.PromptNumber(p)}: {SessionAnalysis.OneLine(SessionAnalysis.Describe(p), 200)}");
             }
             var evidence = upToCommit.Where(r => r.Kind() is "TestCompleted" or "BuildCompleted").ToList();
             sb.AppendLine(evidence.Count == 0 ? "- Build/test evidence before the commit: none recorded" : "- Build/test evidence before the commit:");

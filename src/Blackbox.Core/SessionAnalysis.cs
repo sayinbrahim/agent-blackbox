@@ -18,10 +18,13 @@ public sealed record TestCounts(int Passed, int Failed, int Skipped, int Total)
 
 public sealed record Anomaly(string Kind, string Message, int? Seq);
 
-public sealed record FileTouch(string File, int Edits, int Added, int Removed, bool Created, IReadOnlyList<int> PromptSeqs);
+public sealed record FileTouch(string File, int Edits, int Added, int Removed, bool Created, IReadOnlyList<int> PromptNumbers);
 
-/// <summary>A prompt and everything the agent did for it. Prompt is null for actions before the first prompt.</summary>
-public sealed record PromptGroup(JsonObject? Prompt, IReadOnlyList<JsonObject> Actions);
+/// <summary>
+/// A prompt and everything the agent did for it. Prompt is null for actions before the first prompt,
+/// or (Resumed) for a resume, compact or clear inside the session. Number is the 1-based prompt number, 0 without a prompt.
+/// </summary>
+public sealed record PromptGroup(JsonObject? Prompt, int Number, bool Resumed, IReadOnlyList<JsonObject> Actions);
 
 /// <summary>Deterministic facts derived from one session. No guessing: what isn't recorded is reported as unknown.</summary>
 public sealed partial class SessionAnalysis
@@ -40,13 +43,13 @@ public sealed partial class SessionAnalysis
     {
         Session = session;
         var records = session.Records;
-        PromptCount = records.Count(r => r.Kind() == "PromptSubmitted");
+        PromptCount = session.Prompts.Count();
         ToolCalls = records.Count(r => r.IsToolResult());
         Errors = records.Count(r => r.Event() == "PostToolUseFailure");
         Freshness = ComputeFreshness(records, config);
-        Files = ComputeFiles(records);
+        Files = ComputeFiles(session);
         Anomalies = ComputeAnomalies(records, Files, config);
-        Groups = ComputeGroups(records);
+        Groups = ComputeGroups(session);
     }
 
     public static Freshness ComputeFreshness(IEnumerable<JsonObject> records, BlackboxConfig config)
@@ -93,8 +96,8 @@ public sealed partial class SessionAnalysis
         && r.O("data").B("success") != false
         && config.IsSource(r.O("data").S("file"));
 
-    private static List<FileTouch> ComputeFiles(IReadOnlyList<JsonObject> records) =>
-        [.. records.Where(r => r.IsFileChange() && r.O("data").B("success") != false)
+    private static List<FileTouch> ComputeFiles(SessionLog session) =>
+        [.. session.Records.Where(r => r.IsFileChange() && r.O("data").B("success") != false)
             .GroupBy(r => r.O("data").S("file") ?? "?")
             .Select(g => new FileTouch(
                 g.Key,
@@ -102,7 +105,7 @@ public sealed partial class SessionAnalysis
                 g.Sum(r => r.O("data").I("added_lines") ?? 0),
                 g.Sum(r => r.O("data").I("removed_lines") ?? 0),
                 g.Any(r => r.Kind() == "FileCreated"),
-                [.. g.Select(r => r.I("prompt_seq")).OfType<int>().Distinct()]))
+                [.. g.Select(session.PromptOf).OfType<JsonObject>().Select(session.PromptNumber).Distinct().Order()]))
             .OrderByDescending(f => f.Edits).ThenBy(f => f.File, StringComparer.Ordinal)];
 
     private static List<Anomaly> ComputeAnomalies(IReadOnlyList<JsonObject> records, IReadOnlyList<FileTouch> files, BlackboxConfig config)
@@ -127,31 +130,34 @@ public sealed partial class SessionAnalysis
         return list;
     }
 
-    private static List<PromptGroup> ComputeGroups(IReadOnlyList<JsonObject> records)
+    private static List<PromptGroup> ComputeGroups(SessionLog session)
     {
         var groups = new List<PromptGroup>();
         JsonObject? prompt = null;
+        var resumed = false;
         var actions = new List<JsonObject>();
-        foreach (var r in records)
+        void Flush()
         {
-            if (r.Kind() == "PromptSubmitted")
+            if (prompt is not null || actions.Count > 0)
             {
-                if (prompt is not null || actions.Count > 0)
-                {
-                    groups.Add(new(prompt, actions));
-                }
-                prompt = r;
-                actions = [];
+                groups.Add(new(prompt, prompt is null ? 0 : session.PromptNumber(prompt), resumed, actions));
+            }
+        }
+        foreach (var r in session.Records)
+        {
+            if (r.IsPrompt() || r.IsRestart())
+            {
+                Flush();
+                prompt = r.IsPrompt() ? r : null;
+                resumed = r.IsRestart();
+                actions = prompt is null ? [r] : [];
             }
             else if (r.Event() != "PreToolUse")
             {
                 actions.Add(r);
             }
         }
-        if (prompt is not null || actions.Count > 0)
-        {
-            groups.Add(new(prompt, actions));
-        }
+        Flush();
         return groups;
     }
 
@@ -163,8 +169,14 @@ public sealed partial class SessionAnalysis
         var tool = r.S("tool");
         switch (r.Kind())
         {
+            case "SessionStarted" when d.S("source") is "resume" or "compact" or "clear":
+                return $"Session {(d.S("source") == "resume" ? "resumed" : d.S("source") == "compact" ? "compacted" : "cleared")} on {d.S("git_branch") ?? "unknown branch"}";
             case "SessionStarted":
                 return $"Session started ({d.S("source") ?? "?"}) on {d.S("git_branch") ?? "unknown branch"}";
+            case "TaskNotification":
+                return $"Background task notification: {d.S("summary") ?? "task finished"}";
+            case "PromptSubmitted" when r.IsNotification():
+                return $"Background task notification: {RecordBuilder.NotificationSummary(d.S("prompt")!)}";
             case "SessionEnded":
                 return $"Session ended ({d.S("reason") ?? "?"})";
             case "AgentStopped":

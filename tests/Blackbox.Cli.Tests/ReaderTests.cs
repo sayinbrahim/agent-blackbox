@@ -152,7 +152,7 @@ public class InvestigateCommandTests
         var md = w.ToString();
         Assert.Contains("| `src/Order.cs` | exact | `sess-000` |", md);
         Assert.Contains("Verification at commit time: **VERIFIED**", md);
-        Assert.Contains("#0: Add order", md);
+        Assert.Contains("#1: Add order", md);
         Assert.Contains("5 passed", md);
     }
 }

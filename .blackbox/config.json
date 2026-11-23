@@ -2,7 +2,7 @@
   "version": 1,
   "record_prompts": "full",
   "max_diff_kb": 16,
-  "ignore_paths": [".env*", "**/secrets/**", "*.pfx", "*.pem", "appsettings.*.json"],
+  "ignore_paths": [".env*", "**/secrets/**", "*.pfx", "*.pem", "appsettings.*.json", "launch/**"],
   "redaction": { "enabled": true, "extra_patterns": [] },
   "commands": { "test": [], "build": [] }
 }

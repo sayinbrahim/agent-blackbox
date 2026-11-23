@@ -29,6 +29,17 @@ public static class J
     public static bool IsToolResult(this JsonObject r) => r.Event() is "PostToolUse" or "PostToolUseFailure";
 
     public static bool IsFileChange(this JsonObject r) => r.Kind() is "FileCreated" or "FileModified" && r.O("data").S("op") is not null;
+
+    /// <summary>Background task notifications arrive as UserPromptSubmit. Logs before 0.1.2 stored them as PromptSubmitted.</summary>
+    public static bool IsNotification(this JsonObject r) =>
+        r.Kind() == "TaskNotification"
+        || (r.Kind() == "PromptSubmitted" && RecordBuilder.IsNotificationText(r.O("data").S("prompt")));
+
+    /// <summary>A prompt the user typed (not a task notification).</summary>
+    public static bool IsPrompt(this JsonObject r) => r.Kind() == "PromptSubmitted" && !r.IsNotification();
+
+    /// <summary>A SessionStart after the first record: resume, compact or clear within the same session.</summary>
+    public static bool IsRestart(this JsonObject r) => r.Kind() == "SessionStarted" && r.Seq() > 0;
 }
 
 /// <summary>One recorded session, loaded from its JSONL file.</summary>
@@ -47,11 +58,57 @@ public sealed class SessionLog
     public string? Branch => StartRecord.O("data").S("git_branch");
     public string? Head => StartRecord.O("data").S("git_head");
 
-    public IEnumerable<JsonObject> Prompts => Records.Where(r => r.Kind() == "PromptSubmitted");
+    public IEnumerable<JsonObject> Prompts => Records.Where(r => r.IsPrompt());
     public IEnumerable<JsonObject> ToolResults => Records.Where(r => r.IsToolResult());
 
+    // Attribution is derived from record order rather than the stored prompt_seq, so older logs
+    // (where notifications moved prompt_seq) read correctly without rewriting the chain.
+    private Dictionary<JsonObject, JsonObject>? _promptOf;
+    private Dictionary<JsonObject, int>? _promptNumber;
+
+    private void Index()
+    {
+        if (_promptOf is not null)
+        {
+            return;
+        }
+        _promptOf = new(ReferenceEqualityComparer.Instance);
+        _promptNumber = new(ReferenceEqualityComparer.Instance);
+        JsonObject? current = null;
+        foreach (var r in Records)
+        {
+            if (r.IsPrompt())
+            {
+                current = r;
+                _promptNumber[r] = _promptNumber.Count + 1;
+            }
+            else if (r.IsRestart())
+            {
+                current = null;
+            }
+            if (current is not null)
+            {
+                _promptOf[r] = current;
+            }
+        }
+    }
+
+    /// <summary>The user prompt this record belongs to, or null (before the first prompt, or after a resume).</summary>
+    public JsonObject? PromptOf(JsonObject record)
+    {
+        Index();
+        return _promptOf!.GetValueOrDefault(record);
+    }
+
+    /// <summary>1-based position of a prompt among the session's user prompts.</summary>
+    public int PromptNumber(JsonObject prompt)
+    {
+        Index();
+        return _promptNumber!.GetValueOrDefault(prompt);
+    }
+
     public JsonObject? PromptAt(int? seq) =>
-        seq is null ? null : Records.FirstOrDefault(r => r.Seq() == seq && r.Kind() == "PromptSubmitted");
+        seq is null ? null : Records.FirstOrDefault(r => r.Seq() == seq && r.IsPrompt());
 
     /// <summary>Loads a session. Records after a broken link are still returned; check <see cref="Verify"/>.</summary>
     public static SessionLog Load(string file)
