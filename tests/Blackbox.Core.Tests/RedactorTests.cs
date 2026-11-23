@@ -74,6 +74,13 @@ public class RedactorTests
         Assert.Equal(@"~\repo and -rw-r--r-- 1 <user> 197121", r.Redact(@"C:\Users\Ana María\repo and -rw-r--r-- 1 Ana María 197121"));
     }
 
+    [Theory]
+    [InlineData(@"C:\Users\JOHNDO~1\AppData\Local\Temp", "JOHNDO~1")]
+    [InlineData(@"C:\Users\JOHNDO~12\AppData", "JOHNDO~12")]
+    [InlineData(@"C:\Users\john\AppData\Local\Temp", null)]
+    [InlineData(null, null)]
+    public void ShortProfileName_FromTemp(string? temp, string? expected) => Assert.Equal(expected, Redactor.ShortProfileName(temp));
+
     [Fact]
     public void PersonalLiterals_IncludeCurrentHome()
     {

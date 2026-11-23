@@ -125,8 +125,22 @@ public sealed partial class Redactor
         {
             list.Add((user, "<user>"));
         }
+        // Windows often hands out the 8.3 short form of the profile (C:\Users\JOHNDO~1) in TEMP; catch that name on its own too.
+        if (ShortProfileName(Environment.GetEnvironmentVariable("TEMP")) is { } shortName && !shortName.Equals(user, StringComparison.OrdinalIgnoreCase))
+        {
+            list.Add((shortName, "<user>"));
+        }
         return list;
     }
+
+    internal static string? ShortProfileName(string? tempPath)
+    {
+        var m = ShortName().Match(tempPath ?? "");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    [GeneratedRegex(@"(?i)[\\/]Users[\\/]([^\\/]{1,6}~\d+)(?:[\\/]|$)")]
+    private static partial Regex ShortName();
 
     // Other users' homes and 8.3 short names (C:\Users\JOHNDO~1) that the literal pass can't know about.
     [GeneratedRegex(@"(?i)\b[A-Z]:[\\/]Users[\\/][^\\/\s""'<>|]+")]
