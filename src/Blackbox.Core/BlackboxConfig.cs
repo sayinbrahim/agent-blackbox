@@ -16,12 +16,24 @@ public sealed class BlackboxConfig
     public IReadOnlyList<string> TestCommands { get; init; } = [];
     public IReadOnlyList<string> BuildCommands { get; init; } = [];
 
+    /// <summary>Changes to these paths don't make verification stale (docs). Config: "freshness": { "exclude": [...] }.</summary>
+    public IReadOnlyList<string> NonSourcePaths { get; init; } = DefaultNonSourcePaths;
+
+    public static readonly string[] DefaultNonSourcePaths = ["*.md", "docs/**"];
+
     private Regex[]? _ignore;
+    private Regex[]? _nonSource;
 
     public bool IsIgnored(string relativePath)
     {
         _ignore ??= [.. IgnorePaths.Select(Glob.ToRegex)];
         return _ignore.Any(r => r.IsMatch(relativePath));
+    }
+
+    public bool IsSource(string? relativePath)
+    {
+        _nonSource ??= [.. NonSourcePaths.Select(Glob.ToRegex)];
+        return relativePath is null || !_nonSource.Any(r => r.IsMatch(relativePath));
     }
 
     public const string DefaultJson = """
@@ -31,7 +43,8 @@ public sealed class BlackboxConfig
           "max_diff_kb": 16,
           "ignore_paths": [".env*", "**/secrets/**", "*.pfx", "*.pem", "appsettings.*.json"],
           "redaction": { "enabled": true, "extra_patterns": [] },
-          "commands": { "test": [], "build": [] }
+          "commands": { "test": [], "build": [] },
+          "freshness": { "exclude": ["*.md", "docs/**"] }
         }
 
         """;
@@ -61,6 +74,7 @@ public sealed class BlackboxConfig
             ExtraPatterns = Strings(root["redaction"]?["extra_patterns"]) ?? [],
             TestCommands = Strings(root["commands"]?["test"]) ?? [],
             BuildCommands = Strings(root["commands"]?["build"]) ?? [],
+            NonSourcePaths = Strings(root["freshness"]?["exclude"]) ?? DefaultNonSourcePaths,
         };
     }
 
