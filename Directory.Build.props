@@ -6,7 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <InvariantGlobalization>true</InvariantGlobalization>
     <Version>0.1.0-alpha.1</Version>
     <Authors>Halil İbrahim Sayın</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -15,5 +14,6 @@
   <!-- AOT/trim analyzers on for all shipped code -->
   <PropertyGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
     <IsAotCompatible>true</IsAotCompatible>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 </Project>
