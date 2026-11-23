@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>bbx</AssemblyName>
+    <RootNamespace>Blackbox.Cli</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>bbx</ToolCommandName>
+    <PackageId>AgentBlackbox</PackageId>
+    <Description>A flight recorder for AI coding agents.</Description>
+    <!-- AOT per-RID packages must be packed on a matching OS (see docs/HOOKS.md / release workflow); "any" is the framework-dependent fallback -->
+    <ToolPackageRuntimeIdentifiers>win-x64;linux-x64;osx-arm64;osx-x64;any</ToolPackageRuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Blackbox.Core\Blackbox.Core.csproj" />
+    <ProjectReference Include="..\Blackbox.Report\Blackbox.Report.csproj" />
+  </ItemGroup>
+</Project>

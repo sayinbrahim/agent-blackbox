@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Blackbox.Cli/Blackbox.Cli.csproj" />
+    <Project Path="src/Blackbox.Core/Blackbox.Core.csproj" />
+    <Project Path="src/Blackbox.Report/Blackbox.Report.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Blackbox.Cli.Tests/Blackbox.Cli.Tests.csproj" />
+    <Project Path="tests/Blackbox.Core.Tests/Blackbox.Core.Tests.csproj" />
+  </Folder>
+</Solution>
