@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-23
+
 ### Added
 - Distribution: `dotnet tool install -g AgentBlackbox` (Native AOT per platform, framework-dependent fallback), `dnx AgentBlackbox`, and binaries for win-x64, linux-x64, osx-arm64 and osx-x64 on GitHub Releases.
 - `bbx sessions`, `bbx timeline`, `bbx blame`, `bbx report` (HTML and Markdown) and `bbx investigate --commit`.
