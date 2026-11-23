@@ -11,6 +11,7 @@ on:
       - .github/workflows/release.yml
       - src/**/*.csproj
       - Directory.Build.props
+      - global.json
       - scripts/release-notes.sh
 
 permissions:
