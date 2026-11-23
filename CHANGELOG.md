@@ -5,6 +5,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- Distribution: `dotnet tool install -g AgentBlackbox` (Native AOT per platform, framework-dependent fallback), `dnx AgentBlackbox`, and binaries for win-x64, linux-x64, osx-arm64 and osx-x64 on GitHub Releases.
 - `bbx sessions`, `bbx timeline`, `bbx blame`, `bbx report` (HTML and Markdown) and `bbx investigate --commit`.
 - Verification freshness (`VERIFIED`, `STALE`, `FAILED`, `UNVERIFIED`) and `dotnet test` count parsing.
 - Anomaly detection: failed tool calls, files edited 3+ times, deleted files, source changes without a test run.

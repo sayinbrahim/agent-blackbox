@@ -7,10 +7,16 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>bbx</ToolCommandName>
     <PackageId>AgentBlackbox</PackageId>
-    <Description>A flight recorder for AI coding agents.</Description>
-    <!-- AOT per-RID packages must be packed on a matching OS (see docs/HOOKS.md / release workflow); "any" is the framework-dependent fallback -->
+    <Description>A flight recorder for AI coding agents. Records what Claude Code does into a hash-chained log and produces incident reports and line-level provenance.</Description>
+    <PackageTags>claude-code;ai;agents;audit;provenance;flight-recorder;cli</PackageTags>
+    <PackageProjectUrl>https://github.com/sayinbrahim/agent-blackbox</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- AOT per-RID packages must be packed on a matching OS (see .github/workflows/release.yml); "any" is the framework-dependent fallback -->
     <ToolPackageRuntimeIdentifiers>win-x64;linux-x64;osx-arm64;osx-x64;any</ToolPackageRuntimeIdentifiers>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Blackbox.Core\Blackbox.Core.csproj" />
     <ProjectReference Include="..\Blackbox.Report\Blackbox.Report.csproj" />
