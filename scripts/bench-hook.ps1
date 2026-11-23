@@ -6,10 +6,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+if (-not (Test-Path $Bbx) -and (Test-Path "$Bbx.exe")) { $Bbx = "$Bbx.exe" }   # Windows
 $bbxPath = (Resolve-Path $Bbx).Path
-if ($IsWindows -or $env:OS -eq 'Windows_NT') {
-    if (-not $bbxPath.EndsWith('.exe') -and (Test-Path "$bbxPath.exe")) { $bbxPath = "$bbxPath.exe" }
-}
 $payload = Get-Content -Raw ([IO.Path]::Combine($PSScriptRoot, '..', 'fixtures', 'hook-events', 'PostToolUse.bash-test.json'))
 
 $project = Join-Path ([IO.Path]::GetTempPath()) ("bbx-bench-" + [guid]::NewGuid().ToString('N'))
