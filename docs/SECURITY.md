@@ -8,7 +8,7 @@
 
 ## Secrets
 
-Redaction runs before anything is written to disk (tokens, keys, passwords, connection strings, private keys). Paths matching `ignore_paths` are recorded as "file changed" without a diff. Redaction is pattern-based and can miss things; review `.blackbox/` before committing it if you work with sensitive data, or use `bbx init --private`.
+Redaction runs on every string in a record before it is written to disk: tokens, keys, passwords, connection strings, private keys, URL credentials, `.env` lines, and the current user's home directory and user name (other `C:\Users\<name>`, `/home/<name>` and `/Users/<name>` paths become `~`). Claude Code's `transcript_path` and `scratchpad_dir` are dropped. Paths matching `ignore_paths` are recorded as "file changed" without a diff. Redaction is pattern-based and can miss things; review `.blackbox/` before committing it if you work with sensitive data, or use `bbx init --private`.
 
 ## Reporting a vulnerability
 

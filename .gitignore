@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# dogfooding build of bbx (hooks run it; kept out of bin/ so builds are not locked)
+.dogfood/
+.claude/settings.local.json

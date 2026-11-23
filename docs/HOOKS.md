@@ -47,3 +47,18 @@ File-editing tools today: `Edit`, `Write`, `NotebookEdit`. `MultiEdit` is no lon
 
 - Shell-form commands run in Git Bash, or PowerShell when Git Bash is missing.
 - If `bbx` is not on PATH, every hook prints a "hook error" notice but the agent keeps working.
+
+## Observed on Windows (2026-11-23)
+
+Captured with a temporary hook that saved stdin (see `fixtures/hook-events/`):
+
+- Hook changes in `.claude/settings.local.json` were picked up by a running session without a restart.
+- `transcript_path` and `scratchpad_dir` contain the user's home directory (and so their name). bbx drops both.
+- `cwd` follows Claude when it changes directory; `CLAUDE_PROJECT_DIR` stays at the project root. bbx uses `CLAUDE_PROJECT_DIR`, then `cwd`, and walks up to the nearest `.blackbox/`.
+- `PostToolUse` for `Edit` has `tool_response.originalFile` and `structuredPatch` (hunks with `oldStart`, `oldLines`, `newStart`, `newLines`, `lines`). `Write` has `type` (`create`/`update`). `Read` returns the file content, which bbx does not store.
+- A failing `Bash` call arrives as `PostToolUseFailure` with `error` = `"Exit code N\n<output>"` and no `tool_response`.
+- Successful `Bash`: `tool_response` has `stdout`, `stderr`, `interrupted`, `isImage`. No exit code field.
+
+## Why `bbx init` writes `bbx hook ...` and not a full path
+
+`.claude/settings.json` is shared through git, so it must not contain a path from one person's machine. It gets `bbx hook <Event>` and relies on PATH. `bbx init --local` writes the absolute path of the running binary (with forward slashes, which work in both Git Bash and PowerShell) to `.claude/settings.local.json` and adds that file to `.gitignore`.
