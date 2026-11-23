@@ -64,12 +64,12 @@ public static class Readers
         {
             o.WriteLine();
             o.WriteLine(g.Prompt is { } p
-                ? c.Amber($"#{p.Seq()} {SessionAnalysis.Clock(p)} ") + c.Bold(SessionAnalysis.OneLine(SessionAnalysis.Describe(p), 110))
-                : c.Amber("(before first prompt)"));
+                ? c.Amber($"#{g.Number} {SessionAnalysis.Clock(p)} ") + c.Bold(SessionAnalysis.OneLine(SessionAnalysis.Describe(p), 110))
+                : c.Amber(g.Resumed ? "(resumed, no prompt yet)" : "(before first prompt)"));
             foreach (var r in g.Actions)
             {
                 var failed = r.Event() == "PostToolUseFailure";
-                var system = r.Kind() is "SessionStarted" or "SessionEnded" or "AgentStopped";
+                var system = r.Kind() is "SessionStarted" or "SessionEnded" or "AgentStopped" || r.IsNotification();
                 var mark = failed ? c.Red("✖") : system ? c.Dim("·") : c.Green("✔");
                 var text = SessionAnalysis.Describe(r);
                 o.WriteLine($"  {c.Dim(SessionAnalysis.Clock(r))} {mark} {(failed ? c.Red(text) : system ? c.Dim(text) : text)}");
@@ -111,7 +111,7 @@ public static class Readers
                 var r = origin.Record;
                 o.WriteLine(c.Bold($"Line {n}: AI-written"));
                 o.WriteLine($"  Session : {origin.Session.Start.UtcDateTime:yyyy-MM-dd HH:mm} ({origin.Session.ShortId})");
-                o.WriteLine($"  Prompt  : {(origin.Prompt is { } p ? $"#{p.Seq()} \"{SessionAnalysis.OneLine(SessionAnalysis.Describe(p), 100)}\"" : "(no prompt recorded)")}");
+                o.WriteLine($"  Prompt  : {(origin.Prompt is { } p ? $"#{origin.Session.PromptNumber(p)} \"{SessionAnalysis.OneLine(SessionAnalysis.Describe(p), 100)}\"" : "(no prompt recorded)")}");
                 o.WriteLine($"  Tool    : {r.S("tool")} at {SessionAnalysis.Clock(r)}");
                 o.WriteLine("  Status  : unchanged since");
             }
@@ -131,7 +131,7 @@ public static class Readers
         }
         foreach (var l in result.Lines)
         {
-            var tag = l.Trivial ? "        " : l.Origin is { } org ? c.Amber($"AI {(org.Prompt is { } p ? "#" + p.Seq() : "?"),-4} ") : c.Dim("human   ");
+            var tag = l.Trivial ? "        " : l.Origin is { } org ? c.Amber($"AI {(org.Prompt is { } p ? "#" + org.Session.PromptNumber(p) : "?"),-4} ") : c.Dim("human   ");
             o.WriteLine($"{c.Dim(l.Number.ToString(CultureInfo.InvariantCulture).PadLeft(5))} {tag}{l.Text}");
         }
         return 0;

@@ -57,7 +57,7 @@ public static class Provenance
             if (added.TryGetValue(hash, out var hit))
             {
                 ai++;
-                lines.Add(new(n, text, false, new(hit.Item1, hit.Item2, hit.Item1.PromptAt(hit.Item2.I("prompt_seq")))));
+                lines.Add(new(n, text, false, new(hit.Item1, hit.Item2, hit.Item1.PromptOf(hit.Item2))));
             }
             else
             {

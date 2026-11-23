@@ -27,8 +27,15 @@ public sealed class SessionStore(string blackboxDir)
         record["seq"] = seq;
         record["prev"] = last?["hash"]?.GetValue<string>() ?? HashChain.Genesis;
 
-        // prompt_seq links every action to the latest prompt; a prompt points to itself.
-        var promptSeq = record["event"]?.GetValue<string>() == "UserPromptSubmit" ? seq : last?["prompt_seq"]?.GetValue<int>();
+        // prompt_seq links every action to the latest user prompt; a prompt points to itself.
+        // Task notifications keep the current prompt; a SessionStart (resume, compact) belongs to none.
+        var evt = record["event"]?.GetValue<string>();
+        var promptSeq = evt switch
+        {
+            "UserPromptSubmit" when record["kind"]?.GetValue<string>() != "TaskNotification" => seq,
+            "SessionStart" => (int?)null,
+            _ => last?["prompt_seq"]?.GetValue<int>(),
+        };
         if (promptSeq is not null)
         {
             record["prompt_seq"] = promptSeq;

@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+- Background task notifications are no longer counted as prompts. New records store them as `TaskNotification`; older logs are read the same way, so their actions and blamed lines go back to the prompt the user actually typed.
+- Prompt numbers in `timeline`, `blame`, `report` and `investigate` are 1, 2, 3 in session order instead of record sequence numbers.
+- A resumed session (`claude --continue`), compaction or clear shows as "Session resumed" in its own group instead of under the previous prompt, and belongs to no prompt.
+
 ## [0.1.1] - 2026-11-23
 
 First release on nuget.org. The v0.1.0 tag exists, but its publish job failed before anything was uploaded, so 0.1.1 ships everything listed under 0.1.0.

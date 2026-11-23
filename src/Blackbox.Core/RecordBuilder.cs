@@ -47,6 +47,11 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
                 actor = "system";
                 Copy(input, data, "reason");
                 break;
+            case "UserPromptSubmit" when IsNotificationText(Str(input, "prompt")):
+                kind = "TaskNotification";
+                actor = "system";
+                data["summary"] = NotificationSummary(Str(input, "prompt")!);
+                break;
             case "UserPromptSubmit":
                 kind = "PromptSubmitted";
                 actor = "human";
@@ -321,6 +326,18 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s[..max] + $"…[truncated {s.Length - max} chars]";
+
+    /// <summary>Claude Code delivers background task results as a UserPromptSubmit wrapped in &lt;task-notification&gt;.</summary>
+    public static bool IsNotificationText(string? prompt) =>
+        prompt is not null && prompt.AsSpan().TrimStart().StartsWith("<task-notification>", StringComparison.Ordinal);
+
+    /// <summary>The &lt;summary&gt; of a task notification, or a fixed label when it has none.</summary>
+    public static string NotificationSummary(string prompt)
+    {
+        var start = prompt.IndexOf("<summary>", StringComparison.Ordinal);
+        var end = start < 0 ? -1 : prompt.IndexOf("</summary>", start, StringComparison.Ordinal);
+        return end < 0 ? "task finished" : Truncate(prompt[(start + "<summary>".Length)..end].Trim(), 300);
+    }
 
     private static string Tail(string s, int max) =>
         s.Length <= max ? s : $"[…{s.Length - max} chars] " + s[^max..];

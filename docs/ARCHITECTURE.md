@@ -22,6 +22,8 @@ The recorder never brings the aircraft down. `bbx hook` always exits 0 and never
 
 One JSON object per line, written in canonical form. Fields: `v`, `seq`, `ts`, `session`, `event` (raw hook name), `kind` (semantic type, omitted for `PreToolUse` and tools without one), `actor` (`agent`, `human`, `system`), `tool`, `prompt_seq`, `data`, `raw_extra` (unknown payload fields, for forward compatibility), `prev`, `hash`.
 
+`prompt_seq` points to the latest user prompt. Background task notifications (Claude Code sends them as `UserPromptSubmit` wrapped in `<task-notification>`) are recorded as `TaskNotification` and keep the current `prompt_seq`; a `SessionStart` inside a session (resume, compact, clear) has none. Readers derive attribution from record order with the same rules, so logs written before 0.1.2, where notifications moved `prompt_seq`, read correctly without touching the chain. Reports number prompts 1, 2, 3 in session order; `seq` stays the record's position in the chain.
+
 Each record carries `prev` (hash of the previous record, `sha256:GENESIS` for the first) and `hash = SHA256(prev + "\n" + canonical_json(record without hash))`. Canonical JSON: keys sorted ordinally, no whitespace, UTF-8, numbers as written. Appends take `.blackbox/.lock` (exclusive open with retry) and read `seq`/`prev` from the last line inside the lock.
 
 The chain is tamper-evident, not tamper-proof: anyone with write access can rewrite the whole chain.
