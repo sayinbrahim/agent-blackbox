@@ -18,7 +18,22 @@ public static class Program
             using var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
             return RunHook(args.Length > 1 ? args[1] : "", stdin, Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"));
         }
+        Console.OutputEncoding = new UTF8Encoding(false);
         return BuildCommand().Parse(args).Invoke();
+    }
+
+    /// <summary>Runs a read command, turning expected failures (no .blackbox, unknown session, git errors) into a message and exit code 1.</summary>
+    private static int Guard(Func<int> run)
+    {
+        try
+        {
+            return run();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
     }
 
     /// <summary>The recorder never brings the aircraft down: always exit 0, never write to stdout or stderr.</summary>
@@ -76,6 +91,35 @@ public static class Program
         var verify = new Command("verify", "Recompute the hash chain of every session and report tampering. Exit code 1 if any chain is broken.");
         verify.SetAction(_ => Verify(Environment.CurrentDirectory));
         root.Subcommands.Add(verify);
+
+        var sessions = new Command("sessions", "List recorded sessions.");
+        sessions.SetAction(_ => Guard(() => Readers.Sessions(Environment.CurrentDirectory, Console.Out, Ansi.Auto())));
+        root.Subcommands.Add(sessions);
+
+        Argument<string?> SessionArg() => new("session") { Description = "Session id or prefix. Default: latest.", Arity = ArgumentArity.ZeroOrOne };
+
+        var timelineSession = SessionArg();
+        var timeline = new Command("timeline", "Show a session as prompts and the actions they led to. Honors NO_COLOR.") { timelineSession };
+        timeline.SetAction(r => Guard(() => Readers.Timeline(Environment.CurrentDirectory, r.GetValue(timelineSession), Console.Out, Ansi.Auto())));
+        root.Subcommands.Add(timeline);
+
+        var blameTarget = new Argument<string>("file") { Description = "File, optionally with :line (e.g. src/Orders/OrderService.cs:57)." };
+        var blame = new Command("blame", "Show which lines were written by the agent, in which session and from which prompt.") { blameTarget };
+        blame.SetAction(r => Guard(() => Readers.Blame(Environment.CurrentDirectory, r.GetValue(blameTarget)!, Console.Out, Ansi.Auto())));
+        root.Subcommands.Add(blame);
+
+        var reportSession = SessionArg();
+        var format = new Option<string>("--format") { Description = "html (default) or md.", DefaultValueFactory = _ => "html" };
+        var output = new Option<string?>("--output", "-o") { Description = "Output file. Default: bbx-report-<session>.html, or stdout for md." };
+        var report = new Command("report", "Write an incident report for a session.") { reportSession, format, output };
+        report.SetAction(r => Guard(() => Readers.Report(Environment.CurrentDirectory, r.GetValue(reportSession), r.GetValue(format)!, r.GetValue(output), Console.Out)));
+        root.Subcommands.Add(report);
+
+        var commit = new Option<string>("--commit") { Description = "Commit to investigate (sha, tag or ref).", Required = true };
+        var invOutput = new Option<string?>("--output", "-o") { Description = "Output file. Default: stdout (Markdown)." };
+        var investigate = new Command("investigate", "Find the recorded sessions behind a commit and report the evidence.") { commit, invOutput };
+        investigate.SetAction(r => Guard(() => Readers.Investigate(Environment.CurrentDirectory, r.GetValue(commit)!, r.GetValue(invOutput), Console.Out)));
+        root.Subcommands.Add(investigate);
 
         var hook = new Command("hook", "Record one Claude Code hook event from stdin (called by Claude Code).") { new Argument<string>("event") };
         root.Subcommands.Add(hook); // listed for --help; handled by the fast path in Main

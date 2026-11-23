@@ -13,9 +13,14 @@ public sealed class TempProject : IDisposable
     {
         try
         {
+            // git object files are read-only on Windows
+            foreach (var f in Directory.EnumerateFiles(Root, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(f, FileAttributes.Normal);
+            }
             Directory.Delete(Root, recursive: true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // best effort
         }

@@ -25,3 +25,9 @@ One JSON object per line, written in canonical form. Fields: `v`, `seq`, `ts`, `
 Each record carries `prev` (hash of the previous record, `sha256:GENESIS` for the first) and `hash = SHA256(prev + "\n" + canonical_json(record without hash))`. Canonical JSON: keys sorted ordinally, no whitespace, UTF-8, numbers as written. Appends take `.blackbox/.lock` (exclusive open with retry) and read `seq`/`prev` from the last line inside the lock.
 
 The chain is tamper-evident, not tamper-proof: anyone with write access can rewrite the whole chain.
+
+## Read side
+
+`SessionLog` loads a session file and verifies its chain. `SessionAnalysis` derives everything the readers show from the records alone: prompt groups, file touches, anomalies and verification freshness. `Provenance.Blame` and `Investigator` add the current working tree and git (`git` is only invoked by `investigate`, never by the hook). `Blackbox.Report` renders the HTML (embedded template, inline CSS, no scripts) and Markdown reports.
+
+Everything in a report is deterministic evidence from the log. Nothing is inferred by a model.

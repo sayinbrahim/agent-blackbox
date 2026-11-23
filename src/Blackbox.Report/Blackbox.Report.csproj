@@ -2,4 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Blackbox.Core\Blackbox.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="report.html" LogicalName="Blackbox.Report.report.html" />
+  </ItemGroup>
 </Project>

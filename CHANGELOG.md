@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
+- `bbx sessions`, `bbx timeline`, `bbx blame`, `bbx report` (HTML and Markdown) and `bbx investigate --commit`.
+- Verification freshness (`VERIFIED`, `STALE`, `FAILED`, `UNVERIFIED`) and `dotnet test` count parsing.
+- Anomaly detection: failed tool calls, files edited 3+ times, deleted files, source changes without a test run.
 - `bbx hook <event>`: records Claude Code hook events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `SessionEnd`) into hash-chained JSONL. Always exits 0 and never prints.
 - `bbx init` with `--local`, `--private` and `--uninstall`. Merges into existing Claude Code settings and backs them up first.
 - `bbx verify`: detects edited, deleted and reordered records.
