@@ -20,6 +20,8 @@ The recorder never brings the aircraft down. `bbx hook` always exits 0 and never
 
 ## Record format
 
-One JSON object per line. Each record carries `prev` (hash of the previous record, `sha256:GENESIS` for the first) and `hash = SHA256(prev + "\n" + canonical_json(record without hash))`. Canonical JSON: keys sorted ordinally, no whitespace, UTF-8, invariant numbers.
+One JSON object per line, written in canonical form. Fields: `v`, `seq`, `ts`, `session`, `event` (raw hook name), `kind` (semantic type, omitted for `PreToolUse` and tools without one), `actor` (`agent`, `human`, `system`), `tool`, `prompt_seq`, `data`, `raw_extra` (unknown payload fields, for forward compatibility), `prev`, `hash`.
+
+Each record carries `prev` (hash of the previous record, `sha256:GENESIS` for the first) and `hash = SHA256(prev + "\n" + canonical_json(record without hash))`. Canonical JSON: keys sorted ordinally, no whitespace, UTF-8, numbers as written. Appends take `.blackbox/.lock` (exclusive open with retry) and read `seq`/`prev` from the last line inside the lock.
 
 The chain is tamper-evident, not tamper-proof: anyone with write access can rewrite the whole chain.

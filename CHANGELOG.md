@@ -5,4 +5,10 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added
-- Solution skeleton: `Blackbox.Core`, `Blackbox.Cli` (`bbx`, Native AOT), `Blackbox.Report`, test projects, CI on Linux, Windows and macOS.
+- `bbx hook <event>`: records Claude Code hook events (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `SessionEnd`) into hash-chained JSONL. Always exits 0 and never prints.
+- `bbx init` with `--local`, `--private` and `--uninstall`. Merges into existing Claude Code settings and backs them up first.
+- `bbx verify`: detects edited, deleted and reordered records.
+- Redaction of secrets, home directories and user names before writing; `ignore_paths`; `record_prompts` (`full`, `hash`, `off`).
+- Test, build and delete command recognition.
+- CI: build and test on Linux, Windows and macOS; Native AOT publish and hook benchmark.
+- Solution skeleton: `Blackbox.Core`, `Blackbox.Cli` (`bbx`), `Blackbox.Report`.
