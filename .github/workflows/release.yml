@@ -3,7 +3,9 @@ name: release
 # A v* tag builds Native AOT binaries and NuGet tool packages on each OS, checks that the tool installs and records,
 # then publishes to nuget.org (trusted publishing, no stored API key) and creates the GitHub Release.
 # Pull requests that touch packaging run the same jobs as a dry run (nothing is published).
+# Running it by hand (workflow_dispatch) only checks that nuget.org trusted publishing accepts this workflow.
 on:
+  workflow_dispatch:
   push:
     tags: ['v*']
   pull_request:
@@ -21,7 +23,30 @@ env:
   DOTNET_NOLOGO: true
 
 jobs:
+  # Exchanges the OIDC token for a temporary nuget.org key and stops. Nothing is built or pushed.
+  nuget-login-check:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: release   # must match the environment in the nuget.org policy
+    permissions:
+      id-token: write
+    steps:
+      - name: NuGet login (OIDC to a temporary API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      - name: Report
+        run: |
+          if [ -n "${{ steps.login.outputs.NUGET_API_KEY }}" ]; then
+            echo "nuget.org accepted the trusted publishing policy for this workflow."
+          else
+            echo "No API key returned." >&2
+            exit 1
+          fi
+
   version:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
