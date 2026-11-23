@@ -136,8 +136,15 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: List artifacts
-        run: ls -la artifacts
+      - name: Flatten artifacts and check every release file exists
+        run: |
+          set -euo pipefail
+          find artifacts -mindepth 2 -type f -exec mv -t artifacts {} +
+          ls -la artifacts
+          for rid in win-x64 linux-x64 osx-arm64 osx-x64 any; do test -f "artifacts/AgentBlackbox.$rid.$VERSION.nupkg"; done
+          test -f "artifacts/AgentBlackbox.$VERSION.nupkg"
+          test -f "artifacts/bbx-$VERSION-win-x64.zip"
+          for rid in linux-x64 osx-arm64 osx-x64; do test -f "artifacts/bbx-$VERSION-$rid.tar.gz"; done
       - name: Install the tool from the built packages and record one event
         run: |
           set -euo pipefail
@@ -169,6 +176,8 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Flatten artifacts   # upload-artifact keeps the dist/ and nupkg/ folders
+        run: find artifacts -mindepth 2 -type f -exec mv -t artifacts {} +
       - name: NuGet login (OIDC to a temporary API key)
         id: login
         uses: NuGet/login@v1
