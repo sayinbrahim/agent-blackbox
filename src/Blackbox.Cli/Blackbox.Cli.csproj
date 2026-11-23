@@ -15,4 +15,7 @@
     <ProjectReference Include="..\Blackbox.Core\Blackbox.Core.csproj" />
     <ProjectReference Include="..\Blackbox.Report\Blackbox.Report.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="3.0.0" />
+  </ItemGroup>
 </Project>
