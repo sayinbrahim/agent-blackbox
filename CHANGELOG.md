@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-24
+
 ### Fixed
 - Background task notifications are no longer counted as prompts. New records store them as `TaskNotification`; older logs are read the same way, so their actions and blamed lines go back to the prompt the user actually typed.
 - Prompt numbers in `timeline`, `blame`, `report` and `investigate` are 1, 2, 3 in session order instead of record sequence numbers.
