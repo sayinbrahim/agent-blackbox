@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-23
+
+First release on nuget.org. The v0.1.0 tag exists, but its publish job failed before anything was uploaded, so 0.1.1 ships everything listed under 0.1.0.
+
+### Fixed
+- Release workflow: the publish job now finds the packages and binaries inside the downloaded artifact folders, and the dry run checks that every release file exists.
+
 ## [0.1.0] - 2026-11-23
 
 ### Added
