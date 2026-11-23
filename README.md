@@ -89,7 +89,7 @@ Claude Code starts a new process for every hook, so startup time is what counts.
 
 | Machine | Median | p95 |
 |---|---|---|
-| Windows 10 desktop (author's machine), 100 runs | 29.5 ms | 32–36 ms |
+| Windows 10 desktop (author's machine), 100 runs | 16.4 ms | 18 to 25 ms |
 | GitHub-hosted Linux runner, 50 runs | 7.8 ms | 9.7 ms |
 | GitHub-hosted Windows runner, 50 runs | 24 ms | 26.7 ms |
 | GitHub-hosted macOS runner, 50 runs | 51 ms | 90 ms |
