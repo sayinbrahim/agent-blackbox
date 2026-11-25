@@ -80,9 +80,32 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 | `bbx blame <file>[:line]` | AI/human split for a file, or the session, prompt and tool behind a single line. |
 | `bbx report [session] [--format html\|md] [-o file]` | Single-file HTML incident report (no scripts, works offline), or Markdown for a PR description. |
 | `bbx investigate --commit <sha>` | The recorded sessions behind a commit, with the prompts, the build and test evidence at commit time, and any changed files that no session explains. |
+| `bbx check [--require-trace <regex>] [--require-tests] [--base <ref>]` | CI gate for AI-written code. Exit code 1 when a rule fails or a session log fails chain verification. See below. |
 | `bbx hook <event>` | Called by Claude Code. Always exits 0 and never prints, so the recorder can't break the agent. |
 
 `session` is an id prefix and defaults to the latest session.
+
+### `bbx check` in CI
+
+`bbx check` looks at the lines `bbx blame` attributes to the agent and holds them to two optional rules:
+
+- `--require-trace "REQ-\d+"`: each AI line has to come from a session whose prompts, up to that edit, mention a requirement ID. Failures read "Untraced AI code: 3 files (no requirement link)". If prompts are stored as hashes, the check says so instead of guessing.
+- `--require-tests`: each session that changed source with AI code has to have run a test command or changed a test file.
+
+The rules apply to source files; docs (`*.md`, `docs/**`) are listed but not judged. `--base origin/main` limits the check to lines added since the branch left `main`, which is what you want on a pull request:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0            # --base needs history
+- uses: actions/setup-dotnet@v4
+  with:
+    dotnet-version: 10.0.x
+- run: dotnet tool install -g AgentBlackbox
+- run: bbx check --base origin/${{ github.base_ref }} --require-trace "REQ-\d+" --require-tests
+```
+
+The check can only see what was recorded. Code from a session nobody recorded counts as human, so pair it with `.blackbox/` committed in the repository.
 
 ### Verification freshness
 
@@ -139,7 +162,7 @@ The same build without AOT takes 181 ms on the Windows desktop. macOS runners ar
 
 ## Roadmap
 
-v0.2 adds `bbx check` for CI (fail when AI-changed code has no requirement ID in its prompt, or no test alongside it), a GitHub Action, and anchoring of the chain head in git commit trailers.
+v0.2 brings `bbx check` (done, see above), a ready-made GitHub Action, and anchoring of the chain head in git commit trailers.
 
 v0.3 is about prevention: an opt-in pre-flight checklist that can stop dangerous actions such as `git push --force` before they run. It also adds adapters for agents other than Claude Code and a VS Code extension that marks AI-written lines in the gutter.
 

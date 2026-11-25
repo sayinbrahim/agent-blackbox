@@ -121,7 +121,14 @@ public static class Program
         investigate.SetAction(r => Guard(() => Readers.Investigate(Environment.CurrentDirectory, r.GetValue(commit)!, r.GetValue(invOutput), Console.Out)));
         root.Subcommands.Add(investigate);
 
-        var hook = new Command("hook", "Record one Claude Code hook event from stdin (called by Claude Code).") { new Argument<string>("event") };
+        var requireTrace = new Option<string?>("--require-trace") { Description = "Regex for requirement IDs (e.g. \"REQ-\\d+\"). Every AI line must come from a session whose prompts, up to that edit, contain one." };
+        var requireTests = new Option<bool>("--require-tests") { Description = "Every session that changed source with AI code must have run tests or changed a test file." };
+        var baseRef = new Option<string?>("--base") { Description = "Only check lines added since the merge base with this ref (e.g. origin/main). Needs full git history." };
+        var check = new Command("check", "CI gate: check AI-written code against traceability and test rules. Exit code 1 on failure.") { requireTrace, requireTests, baseRef };
+        check.SetAction(r => Guard(() => Readers.Check(Environment.CurrentDirectory, r.GetValue(requireTrace), r.GetValue(requireTests), r.GetValue(baseRef), Console.Out, Ansi.Auto())));
+        root.Subcommands.Add(check);
+
+        var hook = new Command("hook","Record one Claude Code hook event from stdin (called by Claude Code).") { new Argument<string>("event") };
         root.Subcommands.Add(hook); // listed for --help; handled by the fast path in Main
 
         return root;

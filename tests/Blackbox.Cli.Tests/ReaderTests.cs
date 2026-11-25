@@ -26,6 +26,28 @@ public class ReaderTests
     }
 
     [Fact]
+    public void Check_FailsUntracedCode_ThenPassesWithoutRules()
+    {
+        using var p = Recorded();
+        var fail = Run(w => Readers.Check(p.Root, @"REQ-\d+", true, null, w, NoColor), expectedExit: 1);
+        Assert.Contains("src/Order.cs", fail);
+        Assert.Contains("✖ untraced", fail);
+        Assert.Contains("no requirement ID in the prompts behind it (session sess-000 prompt #1)", fail);
+        Assert.Contains("FAIL  Untraced AI code: 1 file (no requirement link)", fail);
+        Assert.DoesNotContain("without test evidence", fail); // the session ran dotnet test
+
+        var list = Run(w => Readers.Check(p.Root, null, false, null, w, NoColor));
+        Assert.Contains("PASS  No rules given; listing only.", list);
+    }
+
+    [Fact]
+    public void Check_BadPattern_IsAnError()
+    {
+        using var p = Recorded();
+        Assert.Throws<InvalidOperationException>(() => Readers.Check(p.Root, "REQ-(", false, null, TextWriter.Null, NoColor));
+    }
+
+    [Fact]
     public void Sessions_ListsOneRow()
     {
         using var p = Recorded();
