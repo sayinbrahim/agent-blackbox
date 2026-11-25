@@ -26,7 +26,7 @@ One JSON object per line, written in canonical form. Fields: `v`, `seq`, `ts`, `
 
 Each record carries `prev` (hash of the previous record, `sha256:GENESIS` for the first) and `hash = SHA256(prev + "\n" + canonical_json(record without hash))`. Canonical JSON: keys sorted ordinally, no whitespace, UTF-8, numbers as written. Appends take `.blackbox/.lock` (exclusive open with retry) and read `seq`/`prev` from the last line inside the lock.
 
-The chain is tamper-evident, not tamper-proof: anyone with write access can rewrite the whole chain.
+The chain is tamper-evident, not tamper-proof: anyone with write access can rewrite the whole chain. Anchors narrow that: a `prepare-commit-msg` hook (`bbx anchor --install-hook`) adds `Blackbox-Head: <session> <seq> sha256:<hash>` for the head of each session log staged in the commit (the staged blob, not the working tree, since the agent keeps appending). `bbx verify` reads those trailers from `git log HEAD` and requires each anchored record to still exist with the same hash.
 
 ## Read side
 
