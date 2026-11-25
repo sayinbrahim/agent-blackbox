@@ -78,7 +78,7 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 | `bbx anchor [--install-hook [--local]]` | Prints `Blackbox-Head` trailers for the staged session logs, or installs the git hook that adds them to every commit. |
 | `bbx sessions` | Lists sessions with duration, prompts, tool calls, files, chain status and verification state. |
 | `bbx timeline [session]` | Prompts and the actions they led to, with failures and warnings. Honors `NO_COLOR`. |
-| `bbx blame <file>[:line]` | AI/human split for a file, or the session, prompt and tool behind a single line. |
+| `bbx blame <file>[:line] [--json]` | AI/human split for a file, or the session, prompt and tool behind a single line. `--json` lists the AI-written lines for editors. |
 | `bbx report [session] [--format html\|md] [-o file]` | Single-file HTML incident report (no scripts, works offline), or Markdown for a PR description. |
 | `bbx investigate --commit <sha>` | The recorded sessions behind a commit, with the prompts, the build and test evidence at commit time, and any changed files that no session explains. |
 | `bbx check [--require-trace <regex>] [--require-tests] [--base <ref>]` | CI gate for AI-written code. Exit code 1 when a rule fails or a session log fails chain verification. See below. |
@@ -120,6 +120,10 @@ Inputs: `require-trace`, `require-tests`, `base` (defaults to the pull request's
 ```
 
 The check can only see what was recorded. Code from a session nobody recorded counts as human, so pair it with `.blackbox/` committed in the repository.
+
+### VS Code
+
+The extension in [vscode/](vscode/) puts an amber bar in the gutter next to every AI-written line. Hover the line to see the session, prompt and tool behind it, and the status bar shows the file's AI share. It calls `bbx blame --json`, so it needs bbx 0.3.0 or later on PATH (or `agentBlackbox.bbxPath`). Until it is on the Marketplace, install the `.vsix` with `code --install-extension agent-blackbox-<version>.vsix`.
 
 ### Pre-flight guard
 
@@ -207,7 +211,7 @@ The same build without AOT takes 181 ms on the Windows desktop. macOS runners ar
 
 v0.2 brings `bbx check`, its GitHub Action and chain-head anchoring in commit trailers (all described above).
 
-v0.3 is about prevention and reach: the pre-flight guard (described above), a VS Code extension that marks AI-written lines in the gutter, and adapters for agents other than Claude Code.
+v0.3 is about prevention and reach: the pre-flight guard and the VS Code extension (both described above), and adapters for agents other than Claude Code.
 
 ## Build from source
 

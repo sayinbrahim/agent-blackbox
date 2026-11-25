@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 - Pre-flight guard: `bbx init --guard` installs a `PreToolUse` hook (`bbx guard`) that blocks force pushes, `dotnet ef database drop`, deleting migrations and editing `.blackbox/sessions/`. Rules can be turned off and added under `guard` in `.blackbox/config.json`. A block is recorded and shown in `timeline` and reports. Any error allows the call.
+- `bbx blame <file> --json`: the AI-written lines of a file with session, prompt, tool and time, for editors.
+- VS Code extension (`vscode/`): marks AI-written lines in the gutter, shows the session and prompt on hover, and the file's AI share in the status bar. Built and tested in a real VS Code in CI; the `.vsix` is a CI artifact.
 
 ## [0.2.1] - 2026-11-25
 
