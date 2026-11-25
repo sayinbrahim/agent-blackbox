@@ -16,7 +16,7 @@ inputs:
     description: Only check lines added since the merge base with this ref. Default on pull requests is origin/<base branch>; elsewhere the whole recording is checked.
     default: ""
   version:
-    description: bbx release to download (e.g. 0.2.0). Default is the tag this action is used at, or the latest release.
+    description: bbx release to download (e.g. 0.2.1). Default is the tag this action is used at, or the latest release.
     default: ""
   bbx-path:
     description: Use this bbx binary instead of downloading one.
