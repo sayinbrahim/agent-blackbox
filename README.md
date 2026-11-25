@@ -101,7 +101,7 @@ The GitHub Action downloads the native binary (no .NET needed), checks only what
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: sayinbrahim/agent-blackbox@v0.2.1
+- uses: sayinbrahim/agent-blackbox@v0.3.0
   with:
     require-trace: "REQ-\d+"
     require-tests: "true"
