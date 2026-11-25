@@ -138,7 +138,7 @@ These adapters follow each agent's published hook documentation (November 2026).
 
 ### VS Code
 
-The extension in [vscode/](vscode/) puts an amber bar in the gutter next to every AI-written line. Hover the line to see the session, prompt and tool behind it, and the status bar shows the file's AI share. It calls `bbx blame --json`, so it needs bbx 0.3.0 or later on PATH (or `agentBlackbox.bbxPath`). Until it is on the Marketplace, install the `.vsix` with `code --install-extension agent-blackbox-<version>.vsix`.
+The extension in [vscode/](vscode/) puts an amber bar in the gutter next to every AI-written line. Hover the line to see the session, prompt and tool behind it, and the status bar shows the file's AI share. It calls `bbx blame --json`, so it needs bbx 0.3.0 or later on PATH (or `agentBlackbox.bbxPath`). Every [GitHub Release](https://github.com/sayinbrahim/agent-blackbox/releases) carries the `.vsix`: download it and run `code --install-extension agent-blackbox-<version>.vsix`, or use **Extensions → … → Install from VSIX**.
 
 ### Pre-flight guard
 
