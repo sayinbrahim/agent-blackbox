@@ -94,6 +94,18 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 
 The rules apply to source files; docs (`*.md`, `docs/**`) are listed but not judged. `--base origin/main` limits the check to lines added since the branch left `main`, which is what you want on a pull request:
 
+The GitHub Action downloads the native binary (no .NET needed), checks only what a pull request adds, and puts the result in the job summary:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: sayinbrahim/agent-blackbox@v0.2.0
+  with:
+    require-trace: "REQ-\d+"
+    require-tests: "true"
+```
+
+Inputs: `require-trace`, `require-tests`, `base` (defaults to the pull request's base branch), `version`, `bbx-path` and `working-directory`. It runs on Linux, macOS and Windows runners. Without the action, install the tool and run the same command:
+
 ```yaml
 - uses: actions/checkout@v4
   with:
@@ -162,7 +174,7 @@ The same build without AOT takes 181 ms on the Windows desktop. macOS runners ar
 
 ## Roadmap
 
-v0.2 brings `bbx check` (done, see above), a ready-made GitHub Action, and anchoring of the chain head in git commit trailers.
+v0.2 brings `bbx check` and its GitHub Action (both done, see above), and anchoring of the chain head in git commit trailers.
 
 v0.3 is about prevention: an opt-in pre-flight checklist that can stop dangerous actions such as `git push --force` before they run. It also adds adapters for agents other than Claude Code and a VS Code extension that marks AI-written lines in the gutter.
 

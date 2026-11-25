@@ -1,0 +1,96 @@
+name: agent-blackbox check
+description: Hold AI-written code to traceability and test rules with bbx check, using the recordings in .blackbox/.
+author: sayinbrahim
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  require-trace:
+    description: Regex for requirement IDs, e.g. "REQ-\d+". Every AI-written line must trace to a prompt that names one. Empty = rule off.
+    default: ""
+  require-tests:
+    description: "true: every session that changed source with AI code must have run tests or changed a test file."
+    default: "false"
+  base:
+    description: Only check lines added since the merge base with this ref. Default on pull requests is origin/<base branch>; elsewhere the whole recording is checked.
+    default: ""
+  version:
+    description: bbx release to download (e.g. 0.2.0). Default is the tag this action is used at, or the latest release.
+    default: ""
+  bbx-path:
+    description: Use this bbx binary instead of downloading one.
+    default: ""
+  working-directory:
+    description: Directory that contains .blackbox/.
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Get bbx
+      id: bbx
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_BBX: ${{ inputs.bbx-path }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        if [ -n "$INPUT_BBX" ]; then
+          echo "path=$(cd "$(dirname "$INPUT_BBX")" && pwd)/$(basename "$INPUT_BBX")" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) rid=linux-x64; ext=tar.gz ;;
+          macOS-ARM64) rid=osx-arm64; ext=tar.gz ;;
+          macOS-X64) rid=osx-x64; ext=tar.gz ;;
+          Windows-X64) rid=win-x64; ext=zip ;;
+          *) echo "No bbx binary for $RUNNER_OS $RUNNER_ARCH." >&2; exit 1 ;;
+        esac
+        tag=""
+        if [ -n "$INPUT_VERSION" ]; then tag="v${INPUT_VERSION#v}"
+        elif [[ "$ACTION_REF" == v[0-9]* ]]; then tag="$ACTION_REF"
+        fi
+        dir="$RUNNER_TEMP/bbx"; rm -rf "$dir"; mkdir -p "$dir"
+        gh release download $tag --repo sayinbrahim/agent-blackbox --pattern "bbx-*-$rid.$ext" --dir "$dir"
+        cd "$dir"
+        if [ "$ext" = zip ]; then pwsh -NoProfile -Command 'Expand-Archive -Path (Get-Item bbx-*.zip) -DestinationPath .'; exe=bbx.exe; else tar -xzf bbx-*.tar.gz; exe=bbx; fi
+        chmod +x "$exe" 2>/dev/null || true
+        echo "path=$dir/$exe" >> "$GITHUB_OUTPUT"
+
+    - name: bbx check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BBX: ${{ steps.bbx.outputs.path }}
+        INPUT_TRACE: ${{ inputs.require-trace }}
+        INPUT_TESTS: ${{ inputs.require-tests }}
+        INPUT_BASE: ${{ inputs.base }}
+        PR_BASE: ${{ github.base_ref }}
+        NO_COLOR: "1"
+      run: |
+        set -uo pipefail
+        "$BBX" --version
+        base="$INPUT_BASE"
+        if [ -z "$base" ] && [ -n "$PR_BASE" ]; then base="origin/$PR_BASE"; fi
+        if [ -n "$base" ]; then
+          # merge-base needs history: unshallow a default checkout and make sure the base branch is there.
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --quiet --no-tags --unshallow origin; fi
+          if [[ "$base" == origin/* ]]; then git fetch --quiet --no-tags origin "+refs/heads/${base#origin/}:refs/remotes/$base"; fi
+        fi
+        args=(check)
+        [ -n "$INPUT_TRACE" ] && args+=(--require-trace "$INPUT_TRACE")
+        [ "$INPUT_TESTS" = true ] && args+=(--require-tests)
+        [ -n "$base" ] && args+=(--base "$base")
+        "$BBX" "${args[@]}" > "$RUNNER_TEMP/bbx-check.txt" 2>&1
+        code=$?
+        cat "$RUNNER_TEMP/bbx-check.txt"
+        {
+          echo "### agent-blackbox check"
+          echo '```'
+          cat "$RUNNER_TEMP/bbx-check.txt"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit $code

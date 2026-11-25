@@ -37,3 +37,9 @@ jobs:
       # Warnings are errors, so any AOT/trim warning fails this step.
       - run: dotnet publish src/Blackbox.Cli -c Release -o out
       - run: pwsh scripts/bench-hook.ps1 -Bbx out/bbx -Runs 50
+      # Dogfood the GitHub Action (action.yml) with the binary built above, against this repo's own recordings.
+      - name: bbx check (this repo's action)
+        uses: ./
+        with:
+          bbx-path: ${{ runner.os == 'Windows' && 'out/bbx.exe' || 'out/bbx' }}
+          require-tests: "true"
