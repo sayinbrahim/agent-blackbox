@@ -10,7 +10,8 @@ public sealed record GuardRule(string Id, string Reason, Regex? Command = null, 
 /// <param name="Target">What matched: the command, or the path.</param>
 public sealed record GuardBlock(GuardRule Rule, string Tool, string Target);
 
-public sealed record GuardOutcome(string Root, GuardBlock Block);
+/// <param name="Input">The (Claude Code-shaped) payload that was blocked.</param>
+public sealed record GuardOutcome(string Root, GuardBlock Block, JsonObject Input);
 
 /// <summary>
 /// The opt-in pre-flight checklist: stops a tool call before it runs. A seatbelt against accidents, not a security boundary:
@@ -108,6 +109,14 @@ public static partial class Guard
                 }
             }
         }
+        else if (tool == "Delete" && Str(toolInput, "file_path") is { } deleted)
+        {
+            var rel = Relative(root, cwd, deleted);
+            foreach (var rule in rules.Where(r => r.Delete is not null && Matches(r.Delete, rel)))
+            {
+                return new(rule, tool, rel);
+            }
+        }
         else if (EditTools.Contains(tool) && (Str(toolInput, "file_path") ?? Str(toolInput, "notebook_path")) is { } path)
         {
             var rel = Relative(root, cwd, path);
@@ -120,22 +129,30 @@ public static partial class Guard
     }
 
     /// <summary>Hook entry point. Null when the project has no .blackbox/ or nothing matched. Throws on bad input or config; the caller allows the call then.</summary>
-    public static GuardOutcome? Check(string stdinJson, string? projectDir)
+    public static GuardOutcome? Check(string stdinJson, string? projectDir, string agent = AgentAdapter.ClaudeCode)
     {
-        var input = JsonNode.Parse(stdinJson) as JsonObject ?? throw new InvalidDataException("hook input is not a JSON object");
-        var root = HookRecorder.FindRoot(projectDir) ?? HookRecorder.FindRoot(Str(input, "cwd"));
+        var raw = JsonNode.Parse(stdinJson) as JsonObject ?? throw new InvalidDataException("hook input is not a JSON object");
+        var inputs = AgentAdapter.Normalize(agent, raw, "PreToolUse");
+        var root = HookRecorder.FindRoot(projectDir) ?? inputs.Select(i => HookRecorder.FindRoot(Str(i, "cwd"))).FirstOrDefault(r => r is not null);
         if (root is null)
         {
             return null;
         }
-        var config = BlackboxConfig.Load(Path.Combine(root, HookRecorder.DirName, "config.json"));
-        return Evaluate(input, root, Rules(config)) is { } block ? new GuardOutcome(root, block) : null;
+        var rules = Rules(BlackboxConfig.Load(Path.Combine(root, HookRecorder.DirName, "config.json")));
+        foreach (var input in inputs)
+        {
+            if (Evaluate(input, root, rules) is { } block)
+            {
+                return new GuardOutcome(root, block, input);
+            }
+        }
+        return null;
     }
 
     /// <summary>Appends a ToolBlocked record, so the timeline shows what was stopped. Throws on errors.</summary>
-    public static void Record(GuardOutcome outcome, string stdinJson, string bbxVersion, DateTimeOffset now)
+    public static void Record(GuardOutcome outcome, string bbxVersion, DateTimeOffset now)
     {
-        var input = (JsonNode.Parse(stdinJson) as JsonObject)!;
+        var input = outcome.Input.DeepClone().AsObject();
         input["hook_event_name"] = "GuardBlocked";
         input["guard_rule"] = outcome.Block.Rule.Id;
         input["guard_reason"] = outcome.Block.Rule.Reason;
