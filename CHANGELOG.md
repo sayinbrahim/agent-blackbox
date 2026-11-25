@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 - `bbx check`, a CI gate for AI-written code. `--require-trace <regex>` fails when AI lines don't trace to a prompt with a requirement ID ("Untraced AI code: N files (no requirement link)"). `--require-tests` fails when a session changed source without running tests or touching a test file. `--base <ref>` limits the check to lines added since the merge base. Broken hash chains always fail the check.
+- GitHub Action (`uses: sayinbrahim/agent-blackbox@v0.2.0`): downloads the native bbx binary for the runner, runs `bbx check` on what the pull request adds, and writes the result to the job summary.
 
 ## [0.1.2] - 2026-11-24
 
