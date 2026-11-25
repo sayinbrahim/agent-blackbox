@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json.Nodes;
 using Blackbox.Core;
 using Blackbox.Report;
 
@@ -134,6 +135,45 @@ public static class Readers
             var tag = l.Trivial ? "        " : l.Origin is { } org ? c.Amber($"AI {(org.Prompt is { } p ? "#" + org.Session.PromptNumber(p) : "?"),-4} ") : c.Dim("human   ");
             o.WriteLine($"{c.Dim(l.Number.ToString(CultureInfo.InvariantCulture).PadLeft(5))} {tag}{l.Text}");
         }
+        return 0;
+    }
+
+    /// <summary>Machine-readable blame for editors: only AI-written lines are listed, everything else is human or trivial.</summary>
+    public static int BlameJson(string dir, string file, TextWriter o)
+    {
+        var (root, _, sessions) = Open(dir);
+        var full = Path.GetFullPath(SplitLine(file).File, dir);
+        if (!File.Exists(full))
+        {
+            throw new InvalidOperationException($"File not found: {file}");
+        }
+        var rel = Path.GetRelativePath(root, full).Replace('\\', '/');
+        var result = Provenance.Blame(root, rel, sessions);
+        var lines = new JsonArray();
+        foreach (var l in result.Lines.Where(l => l.Origin is not null))
+        {
+            var origin = l.Origin!;
+            lines.Add((JsonNode)new JsonObject
+            {
+                ["line"] = l.Number,
+                ["session"] = origin.Session.Id,
+                ["session_start"] = origin.Session.Start.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+                ["prompt"] = origin.Prompt is { } p ? origin.Session.PromptNumber(p) : null,
+                ["prompt_text"] = origin.Prompt is { } q ? SessionAnalysis.OneLine(SessionAnalysis.Describe(q), 300) : null,
+                ["tool"] = origin.Record.S("tool"),
+                ["ts"] = origin.Record.S("ts"),
+            });
+        }
+        var json = new JsonObject
+        {
+            ["file"] = rel,
+            ["ai_lines"] = result.AiLines,
+            ["human_lines"] = result.HumanLines,
+            ["ai_percent"] = result.AiPercent,
+            ["note"] = result.FileNote,
+            ["lines"] = lines,
+        };
+        o.WriteLine(json.ToJsonString());
         return 0;
     }
 
