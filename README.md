@@ -30,6 +30,7 @@ Agents now write a large share of our code, and none of it leaves a record. Nobo
 ```
 dotnet tool install -g AgentBlackbox    # needs the .NET 10 SDK; or grab a binary from Releases
 bbx init                                # in your project: creates .blackbox/ and adds Claude Code hooks
+                                        # Codex, Cursor or Copilot CLI: bbx init --agent codex|cursor|copilot
 ```
 
 Then use Claude Code as usual. When you want to look:
@@ -72,7 +73,7 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 
 | Command | What it does |
 |---|---|
-| `bbx init [--local] [--private] [--guard]` | Creates `.blackbox/` and merges hooks into `.claude/settings.json` (`--local`: `settings.local.json` with this binary's absolute path). Keeps existing settings, backs them up first, and does nothing the second time. `--guard` also installs the pre-flight guard. |
+| `bbx init [--local] [--private] [--guard] [--agent <name>]` | Creates `.blackbox/` and merges hooks into `.claude/settings.json` (`--local`: `settings.local.json` with this binary's absolute path). Keeps existing settings, backs them up first, and does nothing the second time. `--guard` also installs the pre-flight guard. `--agent codex\|cursor\|copilot` writes that agent's hook config instead (experimental, see below). |
 | `bbx init --uninstall` | Removes the bbx hooks. Leaves `.blackbox/` alone. |
 | `bbx verify` | Recomputes every hash chain and checks the chain heads anchored in git commits. Exit code 1 if a record was edited, deleted or reordered, or a log no longer matches its anchor. |
 | `bbx anchor [--install-hook [--local]]` | Prints `Blackbox-Head` trailers for the staged session logs, or installs the git hook that adds them to every commit. |
@@ -82,8 +83,8 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 | `bbx report [session] [--format html\|md] [-o file]` | Single-file HTML incident report (no scripts, works offline), or Markdown for a PR description. |
 | `bbx investigate --commit <sha>` | The recorded sessions behind a commit, with the prompts, the build and test evidence at commit time, and any changed files that no session explains. |
 | `bbx check [--require-trace <regex>] [--require-tests] [--base <ref>]` | CI gate for AI-written code. Exit code 1 when a rule fails or a session log fails chain verification. See below. |
-| `bbx hook <event>` | Called by Claude Code. Always exits 0 and never prints, so the recorder can't break the agent. |
-| `bbx guard` | Called by Claude Code before a tool runs, when the guard is installed. Exit code 2 blocks the call and tells the agent why. Any error allows the call. |
+| `bbx hook <event> [--agent <name>]` | Called by the agent. Always exits 0 and never prints, so the recorder can't break the agent. |
+| `bbx guard [--agent <name>]` | Called by the agent before a tool runs, when the guard is installed. Exit code 2 blocks the call and tells the agent why. Any error allows the call. |
 
 `session` is an id prefix and defaults to the latest session.
 
@@ -120,6 +121,20 @@ Inputs: `require-trace`, `require-tests`, `base` (defaults to the pull request's
 ```
 
 The check can only see what was recorded. Code from a session nobody recorded counts as human, so pair it with `.blackbox/` committed in the repository.
+
+### Other agents (experimental)
+
+Claude Code is the agent bbx was built and tested with. Codex CLI, Cursor and GitHub Copilot CLI have hook systems too, and `bbx init --agent <name>` writes bbx into theirs:
+
+| Agent | `--agent` | Config written | Notes |
+|---|---|---|---|
+| Codex CLI | `codex` | `.codex/hooks.json` | Run `/hooks` in Codex and trust the bbx hooks; Codex skips untrusted hooks. Edits arrive as `apply_patch` and are recorded per file. |
+| Cursor | `cursor` | `.cursor/hooks.json` | Edits come from `afterFileEdit`, commands from `afterShellExecution`. |
+| Copilot CLI | `copilot` | `.github/hooks/agent-blackbox.json` | Also picked up by the Copilot cloud agent, which honors only the bash command. |
+
+A small adapter turns each agent's payload into the shape bbx records, so `timeline`, `blame`, `report`, `check`, `verify` and `--guard` work the same way. What an agent doesn't report stays unknown: Cursor gives no exit code for shell commands, so a test run there shows as "result not recorded" and the session stays UNVERIFIED instead of passing. Codex and Copilot exit codes are read from the command output when it contains one.
+
+These adapters follow each agent's published hook documentation (November 2026). Unlike the Claude Code path, they have not been run against a real session yet. If you use one of these agents, a session log and an issue are very welcome.
 
 ### VS Code
 
@@ -211,7 +226,7 @@ The same build without AOT takes 181 ms on the Windows desktop. macOS runners ar
 
 v0.2 brings `bbx check`, its GitHub Action and chain-head anchoring in commit trailers (all described above).
 
-v0.3 is about prevention and reach: the pre-flight guard and the VS Code extension (both described above), and adapters for agents other than Claude Code.
+v0.3 is about prevention and reach: the pre-flight guard, the VS Code extension and experimental adapters for Codex CLI, Cursor and Copilot CLI (all described above).
 
 ## Build from source
 
