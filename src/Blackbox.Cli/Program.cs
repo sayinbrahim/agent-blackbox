@@ -16,15 +16,21 @@ public static class Program
         if (args.Length > 0 && args[0] == "hook")
         {
             using var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
-            return RunHook(args.Length > 1 ? args[1] : "", stdin, Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"));
+            return RunHook(args.Length > 1 ? args[1] : "", stdin, Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"), AgentArg(args));
         }
         if (args.Length > 0 && args[0] == "guard")
         {
             using var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
-            return RunGuard(stdin, Console.Error, Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"));
+            return RunGuard(stdin, Console.Error, Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"), AgentArg(args), Console.Out);
         }
         Console.OutputEncoding = new UTF8Encoding(false);
         return BuildCommand().Parse(args).Invoke();
+    }
+
+    private static string AgentArg(string[] args)
+    {
+        var i = Array.IndexOf(args, "--agent");
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : AgentAdapter.ClaudeCode;
     }
 
     /// <summary>Runs a read command, turning expected failures (no .blackbox, unknown session, git errors) into a message and exit code 1.</summary>
@@ -42,7 +48,7 @@ public static class Program
     }
 
     /// <summary>The recorder never brings the aircraft down: always exit 0, never write to stdout or stderr.</summary>
-    public static int RunHook(string eventName, TextReader stdin, string? projectDir)
+    public static int RunHook(string eventName, TextReader stdin, string? projectDir, string agent = AgentAdapter.ClaudeCode)
     {
         var now = DateTimeOffset.UtcNow;
         try
@@ -51,7 +57,7 @@ public static class Program
             {
                 try
                 {
-                    HookRecorder.Record(eventName, stdin.ReadToEnd(), projectDir, Version, now);
+                    HookRecorder.Record(eventName, stdin.ReadToEnd(), projectDir, Version, now, agent);
                 }
                 catch (Exception ex)
                 {
@@ -75,7 +81,38 @@ public static class Program
     /// Pre-flight check for a PreToolUse event: exit 2 with the reason on stderr blocks the tool call.
     /// Anything that goes wrong (bad input, bad config, slow disk) allows the call: a broken guard must not stop the agent.
     /// </summary>
-    public static int RunGuard(TextReader stdin, TextWriter stderr, string? projectDir)
+    public static int RunGuard(TextReader stdin, TextWriter stderr, string? projectDir, string agent = AgentAdapter.ClaudeCode, TextWriter? stdout = null)
+    {
+        var message = Check(stdin, projectDir, agent);
+        try
+        {
+            if (message is not null)
+            {
+                stderr.WriteLine(message);
+            }
+            // Cursor reads the decision from stdout and blocks on missing JSON; Copilot takes the reason from it.
+            var decision = agent switch
+            {
+                "cursor" => message is null
+                    ? new System.Text.Json.Nodes.JsonObject { ["permission"] = "allow" }
+                    : new System.Text.Json.Nodes.JsonObject { ["permission"] = "deny", ["user_message"] = message, ["agent_message"] = message },
+                "copilot" when message is not null => new System.Text.Json.Nodes.JsonObject { ["permissionDecision"] = "deny", ["permissionDecisionReason"] = message },
+                _ => null,
+            };
+            if (decision is not null)
+            {
+                stdout?.WriteLine(decision.ToJsonString());
+            }
+        }
+        catch
+        {
+            // a closed pipe must not turn into a crash
+        }
+        return message is null ? 0 : 2;
+    }
+
+    /// <returns>The block message, or null to allow the call.</returns>
+    private static string? Check(TextReader stdin, string? projectDir, string agent)
     {
         var now = DateTimeOffset.UtcNow;
         string? root = null;
@@ -86,7 +123,7 @@ public static class Program
             {
                 try
                 {
-                    return Blackbox.Core.Guard.Check(json, projectDir);
+                    return Blackbox.Core.Guard.Check(json, projectDir, agent);
                 }
                 catch (Exception ex)
                 {
@@ -100,13 +137,13 @@ public static class Program
             });
             if (!check.Wait(TimeSpan.FromSeconds(2)) || check.Result is not { } outcome)
             {
-                return 0;
+                return null;
             }
             var record = Task.Run(() =>
             {
                 try
                 {
-                    Blackbox.Core.Guard.Record(outcome, json, Version, now);
+                    Blackbox.Core.Guard.Record(outcome, Version, now);
                 }
                 catch (Exception ex)
                 {
@@ -114,12 +151,11 @@ public static class Program
                 }
             });
             record.Wait(TimeSpan.FromSeconds(1)); // the block stands even if recording it fails
-            stderr.WriteLine(Blackbox.Core.Guard.Message(outcome.Block));
-            return 2;
+            return Blackbox.Core.Guard.Message(outcome.Block);
         }
         catch
         {
-            return 0;
+            return null;
         }
     }
 
@@ -127,23 +163,24 @@ public static class Program
     {
         var root = new RootCommand("bbx - a flight recorder for AI coding agents.");
 
-        var uninstall = new Option<bool>("--uninstall") { Description = "Remove bbx hooks from .claude/settings.json and .claude/settings.local.json." };
+        var uninstall = new Option<bool>("--uninstall") { Description = "Remove bbx hooks from every agent config bbx writes (.claude/, .codex/, .cursor/, .github/hooks/)." };
         var local = new Option<bool>("--local") { Description = "Write hooks to .claude/settings.local.json with the absolute path of this bbx binary." };
         var @private = new Option<bool>("--private") { Description = "Add .blackbox/ to .gitignore so recordings stay on this machine." };
         var guard = new Option<bool>("--guard") { Description = "Also install the pre-flight guard: a PreToolUse hook that blocks force pushes, deleted migrations and the rules in config.json." };
-        var init = new Command("init", "Set up .blackbox/ and install Claude Code hooks in this project.") { uninstall, local, @private, guard };
-        init.SetAction(r =>
+        var agent = new Option<string>("--agent") { Description = "The agent to record: claude-code (default), or codex, cursor, copilot (experimental).", DefaultValueFactory = _ => AgentAdapter.ClaudeCode };
+        var init = new Command("init", "Set up .blackbox/ and install the agent's hooks in this project.") { uninstall, local, @private, guard, agent };
+        init.SetAction(r => Guard(() =>
         {
             var dir = Environment.CurrentDirectory;
             var messages = r.GetValue(uninstall)
                 ? Installer.Uninstall(dir)
-                : Installer.Install(dir, r.GetValue(local), r.GetValue(@private), Environment.ProcessPath, r.GetValue(guard));
+                : Installer.Install(dir, r.GetValue(local), r.GetValue(@private), Environment.ProcessPath, r.GetValue(guard), r.GetValue(agent)!);
             foreach (var m in messages)
             {
                 Console.WriteLine(m);
             }
             return 0;
-        });
+        }));
         root.Subcommands.Add(init);
 
         var verify = new Command("verify", "Recompute the hash chain of every session and check the chain heads anchored in git commits. Exit code 1 on any mismatch.");

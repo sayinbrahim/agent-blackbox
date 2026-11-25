@@ -320,3 +320,133 @@ public class GuardEndToEndTests
         Assert.Null(JsonNode.Parse(File.ReadAllText(p.Path(".claude", "settings.json")))!["hooks"]);
     }
 }
+
+public class AgentInstallTests
+{
+    private static JsonObject Read(TempProject p, params string[] path) => JsonNode.Parse(File.ReadAllText(p.Path(path)))!.AsObject();
+
+    [Fact]
+    public void Codex_WritesCodexHooks_OnceWithGuard()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, guard: true, agent: "codex");
+        Installer.Install(p.Root, false, false, null, guard: true, agent: "codex");
+
+        var hooks = Read(p, ".codex", "hooks.json")["hooks"]!.AsObject();
+        Assert.Equal(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"], hooks.Select(h => h.Key));
+        Assert.Equal("bbx hook PostToolUse --agent codex", hooks["PostToolUse"]![0]!["hooks"]![0]!["command"]!.GetValue<string>());
+        var pre = hooks["PreToolUse"]!.AsArray();
+        Assert.Equal(2, pre.Count);
+        Assert.Equal(("^(Bash|apply_patch)$", "bbx guard --agent codex"), (pre[1]!["matcher"]!.GetValue<string>(), pre[1]!["hooks"]![0]!["command"]!.GetValue<string>()));
+        Assert.False(File.Exists(p.Path(".claude", "settings.json")));
+    }
+
+    [Fact]
+    public void Cursor_WritesFlatEntries_AndKeepsUserHooks()
+    {
+        using var p = new TempProject();
+        Directory.CreateDirectory(p.Path(".cursor"));
+        File.WriteAllText(p.Path(".cursor", "hooks.json"), """{ "version": 1, "hooks": { "afterFileEdit": [ { "command": "./format.sh" } ] } }""");
+
+        Installer.Install(p.Root, false, false, null, guard: true, agent: "cursor");
+
+        var config = Read(p, ".cursor", "hooks.json");
+        Assert.Equal(1, config["version"]!.GetValue<int>());
+        var edit = config["hooks"]!["afterFileEdit"]!.AsArray();
+        Assert.Equal(["./format.sh", "bbx hook afterFileEdit --agent cursor"], edit.Select(e => e!["command"]!.GetValue<string>()));
+        Assert.Equal("bbx guard --agent cursor", config["hooks"]!["beforeShellExecution"]![0]!["command"]!.GetValue<string>());
+        Assert.Equal("Write|Delete", config["hooks"]!["preToolUse"]![0]!["matcher"]!.GetValue<string>());
+        Assert.True(File.Exists(p.Path(".cursor", "hooks.json.bbx-backup")));
+
+        Installer.Uninstall(p.Root);
+        var after = Read(p, ".cursor", "hooks.json")["hooks"]!.AsObject();
+        Assert.Equal(["afterFileEdit"], after.Select(h => h.Key));
+        Assert.Equal("./format.sh", after["afterFileEdit"]![0]!["command"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Copilot_WritesRepositoryHookFile()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, agent: "copilot");
+
+        var config = Read(p, ".github", "hooks", "agent-blackbox.json");
+        Assert.Equal(1, config["version"]!.GetValue<int>());
+        var start = config["hooks"]!["SessionStart"]![0]!;
+        Assert.Equal(("command", "bbx hook SessionStart --agent copilot", "bbx hook SessionStart --agent copilot", 5),
+            (start["type"]!.GetValue<string>(), start["bash"]!.GetValue<string>(), start["powershell"]!.GetValue<string>(), start["timeoutSec"]!.GetValue<int>()));
+
+        Installer.Uninstall(p.Root);
+        Assert.Null(Read(p, ".github", "hooks", "agent-blackbox.json")["hooks"]);
+    }
+
+    [Fact]
+    public void UnknownAgent_IsAnError() =>
+        Assert.Throws<InvalidOperationException>(() => Installer.Install(new TempProject().Root, false, false, null, agent: "vim"));
+}
+
+public class AgentHookTests
+{
+    private static (int Exit, string Stdout, string Stderr) Guard(string root, string agent, JsonObject input)
+    {
+        using var err = new StringWriter();
+        using var outw = new StringWriter();
+        var exit = Program.RunGuard(new StringReader(input.ToJsonString()), err, root, agent, outw);
+        return (exit, outw.ToString().Trim(), err.ToString());
+    }
+
+    [Fact]
+    public void Cursor_Guard_AlwaysAnswersOnStdout()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, guard: true, agent: "cursor");
+        JsonObject Shell(string cmd) => new() { ["conversation_id"] = "c1", ["hook_event_name"] = "beforeShellExecution", ["command"] = cmd, ["cwd"] = p.Root, ["workspace_roots"] = new JsonArray(p.Root) };
+
+        Assert.Equal((0, """{"permission":"allow"}""", ""), Guard(p.Root, "cursor", Shell("git status")));
+
+        var (exit, stdout, stderr) = Guard(p.Root, "cursor", Shell("git push --force"));
+        Assert.Equal(2, exit);
+        var decision = JsonNode.Parse(stdout)!;
+        Assert.Equal("deny", decision["permission"]!.GetValue<string>());
+        Assert.Contains("force-push", decision["agent_message"]!.GetValue<string>());
+        Assert.Contains("force-push", stderr);
+
+        // broken input still answers allow, so Cursor never blocks on a guard failure
+        using var err = new StringWriter();
+        using var outw = new StringWriter();
+        Assert.Equal(0, Program.RunGuard(new StringReader("{ broken"), err, p.Root, "cursor", outw));
+        Assert.Equal("""{"permission":"allow"}""", outw.ToString().Trim());
+    }
+
+    [Fact]
+    public void Copilot_Guard_DeniesWithReason_AndStaysSilentOnAllow()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, guard: true, agent: "copilot");
+        JsonObject Pre(string cmd) => new() { ["hook_event_name"] = "PreToolUse", ["session_id"] = "cp", ["cwd"] = p.Root, ["tool_name"] = "bash", ["tool_input"] = new JsonObject { ["command"] = cmd } };
+
+        Assert.Equal((0, "", ""), Guard(p.Root, "copilot", Pre("ls")));
+        var (exit, stdout, _) = Guard(p.Root, "copilot", Pre("rm -rf src/Migrations"));
+        Assert.Equal(2, exit);
+        Assert.Equal("deny", JsonNode.Parse(stdout)!["permissionDecision"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Cursor_Recorder_RecordsEditsSilently()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, agent: "cursor");
+        Directory.CreateDirectory(p.Path("src"));
+        File.WriteAllText(p.Path("src", "a.cs"), "int x = 1;\n");
+        var edit = new JsonObject
+        {
+            ["conversation_id"] = "c1", ["hook_event_name"] = "afterFileEdit", ["workspace_roots"] = new JsonArray(p.Root),
+            ["file_path"] = p.Path("src", "a.cs"), ["edits"] = new JsonArray(new JsonObject { ["old_string"] = "", ["new_string"] = "int x = 1;" }),
+        };
+        Assert.Equal(0, Program.RunHook("afterFileEdit", new StringReader(edit.ToJsonString()), p.Root, "cursor"));
+
+        var record = JsonNode.Parse(File.ReadAllLines(Directory.GetFiles(p.Path(".blackbox", "sessions")).Single()).Single())!;
+        Assert.Equal(("FileModified", "src/a.cs", "afterFileEdit"), (record["kind"]!.GetValue<string>(), record["data"]!["file"]!.GetValue<string>(), record["data"]!["agent_tool"]!.GetValue<string>()));
+        Assert.False(File.Exists(p.Path(".blackbox", "errors.log")));
+    }
+}
