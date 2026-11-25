@@ -19,6 +19,9 @@ public sealed class BlackboxConfig
     /// <summary>Changes to these paths don't make verification stale (docs). Config: "freshness": { "exclude": [...] }.</summary>
     public IReadOnlyList<string> NonSourcePaths { get; init; } = DefaultNonSourcePaths;
 
+    /// <summary>The raw "guard" section. Parsed by Guard.Rules, so a bad guard rule never stops the recorder.</summary>
+    public JsonNode? Guard { get; init; }
+
     public static readonly string[] DefaultNonSourcePaths = ["*.md", "docs/**"];
 
     private Regex[]? _ignore;
@@ -44,7 +47,8 @@ public sealed class BlackboxConfig
           "ignore_paths": [".env*", "**/secrets/**", "*.pfx", "*.pem", "appsettings.*.json"],
           "redaction": { "enabled": true, "extra_patterns": [] },
           "commands": { "test": [], "build": [] },
-          "freshness": { "exclude": ["*.md", "docs/**"] }
+          "freshness": { "exclude": ["*.md", "docs/**"] },
+          "guard": { "disable": [], "rules": [] }
         }
 
         """;
@@ -75,6 +79,7 @@ public sealed class BlackboxConfig
             TestCommands = Strings(root["commands"]?["test"]) ?? [],
             BuildCommands = Strings(root["commands"]?["build"]) ?? [],
             NonSourcePaths = Strings(root["freshness"]?["exclude"]) ?? DefaultNonSourcePaths,
+            Guard = root["guard"],
         };
     }
 

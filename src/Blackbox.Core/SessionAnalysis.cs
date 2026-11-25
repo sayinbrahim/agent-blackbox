@@ -119,6 +119,10 @@ public sealed partial class SessionAnalysis
         {
             list.Add(new("oscillation", $"{f.File} was edited {f.Edits} times", null));
         }
+        foreach (var r in records.Where(r => r.Kind() == "ToolBlocked"))
+        {
+            list.Add(new("blocked", $"{Describe(r)} at {Clock(r)}", r.Seq()));
+        }
         foreach (var r in records.Where(r => r.Kind() == "FileDeleted"))
         {
             list.Add(new("deleted-files", $"Files deleted: {Describe(r)} at {Clock(r)}", r.Seq()));
@@ -183,7 +187,17 @@ public sealed partial class SessionAnalysis
                 return "Agent finished responding";
             case "PromptSubmitted":
                 return d.S("prompt") ?? (d.S("prompt_hash") is not null ? "(prompt stored as hash)" : "(prompt not recorded)");
+            case "ToolBlocked":
+                return $"Blocked by guard ({d.S("rule") ?? "?"}): {DescribeTool(r)}";
         }
+        return DescribeTool(r);
+    }
+
+    private static string DescribeTool(JsonObject r)
+    {
+        var d = r.O("data");
+        var input = d.O("input");
+        var tool = r.S("tool");
         if (tool is "Edit" or "Write" or "NotebookEdit")
         {
             var file = d.S("file") ?? input.S("file") ?? "?";
