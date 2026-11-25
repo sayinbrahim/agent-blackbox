@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-11-25
+## [0.3.0] - 2026-11-26
 
 ### Added
 - Pre-flight guard: `bbx init --guard` installs a `PreToolUse` hook (`bbx guard`) that blocks force pushes, `dotnet ef database drop`, deleting migrations and editing `.blackbox/sessions/`. Rules can be turned off and added under `guard` in `.blackbox/config.json`. A block is recorded and shown in `timeline` and reports. Any error allows the call.
