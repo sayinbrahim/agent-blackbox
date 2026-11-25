@@ -74,7 +74,8 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 |---|---|
 | `bbx init [--local] [--private]` | Creates `.blackbox/` and merges hooks into `.claude/settings.json` (`--local`: `settings.local.json` with this binary's absolute path). Keeps existing settings, backs them up first, and does nothing the second time. |
 | `bbx init --uninstall` | Removes the bbx hooks. Leaves `.blackbox/` alone. |
-| `bbx verify` | Recomputes every hash chain. Exit code 1 if a record was edited, deleted or reordered. |
+| `bbx verify` | Recomputes every hash chain and checks the chain heads anchored in git commits. Exit code 1 if a record was edited, deleted or reordered, or a log no longer matches its anchor. |
+| `bbx anchor [--install-hook [--local]]` | Prints `Blackbox-Head` trailers for the staged session logs, or installs the git hook that adds them to every commit. |
 | `bbx sessions` | Lists sessions with duration, prompts, tool calls, files, chain status and verification state. |
 | `bbx timeline [session]` | Prompts and the actions they led to, with failures and warnings. Honors `NO_COLOR`. |
 | `bbx blame <file>[:line]` | AI/human split for a file, or the session, prompt and tool behind a single line. |
@@ -151,7 +152,9 @@ record[n].hash = SHA256( record[n].prev + "\n" + canonical_json(record[n] withou
 record[n].prev = record[n-1].hash            record[0].prev = "sha256:GENESIS"
 ```
 
-The chain is **tamper-evident, not tamper-proof**. It catches a record that was edited, deleted or moved. Anyone with write access can still regenerate the whole chain. Anchoring the chain head in git commits is planned for v0.2.
+The chain is **tamper-evident, not tamper-proof**. It catches a record that was edited, deleted or moved. Anyone with write access can still regenerate the whole chain.
+
+Anchoring makes that harder. `bbx anchor --install-hook` adds a git `prepare-commit-msg` hook: when a commit includes session logs, it writes the head of each staged log into the message as a trailer, `Blackbox-Head: <session> <seq> sha256:<hash>`. `bbx verify` then checks every anchored head in the history of `HEAD`. A log rewritten after the commit fails, even if its own chain is consistent. This only protects what was pushed before the rewrite, and history itself can be rewritten too, so it is a stronger audit trail, not proof. The hook never blocks a commit, and it leaves an existing `prepare-commit-msg` hook alone (it prints the line to add instead).
 
 `bbx blame` matches whitespace-normalized line hashes from recorded agent edits of the same file. A line the agent wrote and nobody changed is found even if it moved within the file. A line edited afterwards counts as human. Files the agent never touched while recording count as human or unrecorded. Edits the agent makes through the shell (`sed`, a script) are not file edits to the hooks, so those lines count as human too.
 
@@ -174,7 +177,7 @@ The same build without AOT takes 181 ms on the Windows desktop. macOS runners ar
 
 ## Roadmap
 
-v0.2 brings `bbx check` and its GitHub Action (both done, see above), and anchoring of the chain head in git commit trailers.
+v0.2 brings `bbx check`, its GitHub Action and chain-head anchoring in commit trailers (all described above).
 
 v0.3 is about prevention: an opt-in pre-flight checklist that can stop dangerous actions such as `git push --force` before they run. It also adds adapters for agents other than Claude Code and a VS Code extension that marks AI-written lines in the gutter.
 

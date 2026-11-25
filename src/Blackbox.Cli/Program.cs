@@ -88,9 +88,16 @@ public static class Program
         });
         root.Subcommands.Add(init);
 
-        var verify = new Command("verify", "Recompute the hash chain of every session and report tampering. Exit code 1 if any chain is broken.");
+        var verify = new Command("verify", "Recompute the hash chain of every session and check the chain heads anchored in git commits. Exit code 1 on any mismatch.");
         verify.SetAction(_ => Verify(Environment.CurrentDirectory));
         root.Subcommands.Add(verify);
+
+        var messageFile = new Option<string?>("--message-file") { Description = "Add Blackbox-Head trailers to this commit message file (used by the git hook). Always exits 0." };
+        var installHook = new Option<bool>("--install-hook") { Description = "Install a git prepare-commit-msg hook that anchors staged session logs in every commit." };
+        var anchorLocal = new Option<bool>("--local") { Description = "With --install-hook: call this bbx binary by absolute path instead of 'bbx' on PATH." };
+        var anchor = new Command("anchor", "Print Blackbox-Head trailers for the session logs staged for the next commit.") { messageFile, installHook, anchorLocal };
+        anchor.SetAction(r => Anchor(Environment.CurrentDirectory, r.GetValue(messageFile), r.GetValue(installHook), r.GetValue(anchorLocal)));
+        root.Subcommands.Add(anchor);
 
         var sessions = new Command("sessions", "List recorded sessions.");
         sessions.SetAction(_ => Guard(() => Readers.Sessions(Environment.CurrentDirectory, Console.Out, Ansi.Auto())));
@@ -153,6 +160,61 @@ public static class Program
         Console.WriteLine(broken == 0
             ? $"{results.Count} session(s) verified. Chains intact (tamper-evident, not tamper-proof)."
             : $"{broken} of {results.Count} session(s) failed verification.");
-        return broken == 0 ? 0 : 1;
+
+        var anchors = Anchors.Verify(root, SessionLog.LoadAll(root));
+        var mismatched = anchors.Where(a => a.Problem is not null).ToList();
+        foreach (var a in mismatched)
+        {
+            Console.WriteLine($"FAIL  Anchor in commit {a.Commit[..Math.Min(10, a.Commit.Length)]}: session {a.Anchor.Session}: {a.Problem}");
+        }
+        Console.WriteLine(anchors.Count == 0
+            ? "No chain heads anchored in git history. 'bbx anchor --install-hook' adds them to future commits."
+            : mismatched.Count == 0
+                ? $"{anchors.Count} anchored chain head(s) in git history match the session logs."
+                : $"{mismatched.Count} of {anchors.Count} anchored chain head(s) no longer match: the logs were changed after those commits.");
+        return broken == 0 && mismatched.Count == 0 ? 0 : 1;
+    }
+
+    public static int Anchor(string dir, string? messageFile, bool installHook, bool local)
+    {
+        if (messageFile is not null)
+        {
+            // Called from the git hook: never fail the commit.
+            try
+            {
+                if (HookRecorder.FindRoot(dir) is { } r)
+                {
+                    Anchors.AddToMessage(r, messageFile);
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
+            {
+                // best effort
+            }
+            return 0;
+        }
+        return Guard(() =>
+        {
+            var root = HookRecorder.FindRoot(dir) ?? throw new InvalidOperationException("No .blackbox/ found. Run 'bbx init' first.");
+            if (installHook)
+            {
+                var command = local && Environment.ProcessPath is { } exe ? exe.Replace('\\', '/') : "bbx";
+                var path = Anchors.InstallHook(root, command);
+                Console.WriteLine($"Installed {path}.");
+                Console.WriteLine("Commits that include .blackbox/sessions/ now carry a Blackbox-Head trailer; 'bbx verify' checks them.");
+                return 0;
+            }
+            var heads = Anchors.StagedHeads(root);
+            if (heads.Count == 0)
+            {
+                Console.WriteLine("No session logs staged. Stage .blackbox/sessions/ first.");
+                return 0;
+            }
+            foreach (var h in heads)
+            {
+                Console.WriteLine($"{Anchors.Key}: {Anchors.Format(h)}");
+            }
+            return 0;
+        });
     }
 }
