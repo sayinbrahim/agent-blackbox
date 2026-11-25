@@ -77,6 +77,11 @@ public sealed partial class SessionAnalysis
                 ? "No source changes and no test runs recorded. Verification is UNVERIFIED."
                 : "Source changed but no test run was recorded. Verification is UNVERIFIED.");
         }
+        if (lastTest.O("data")?["success"] is null)
+        {
+            return new(VerificationState.Unverified, lastTest, changeAfterTest,
+                $"A test command ran at {Clock(lastTest)}, but its result was not recorded (this agent's hooks don't report exit codes). Verification is UNVERIFIED.");
+        }
         var passed = lastTest.O("data").B("success") == true;
         if (!passed)
         {
@@ -176,7 +181,7 @@ public sealed partial class SessionAnalysis
             case "SessionStarted" when d.S("source") is "resume" or "compact" or "clear":
                 return $"Session {(d.S("source") == "resume" ? "resumed" : d.S("source") == "compact" ? "compacted" : "cleared")} on {d.S("git_branch") ?? "unknown branch"}";
             case "SessionStarted":
-                return $"Session started ({d.S("source") ?? "?"}) on {d.S("git_branch") ?? "unknown branch"}";
+                return $"Session started ({d.S("source") ?? "?"}{(d.S("agent") is { } ag ? ", " + ag : "")}) on {d.S("git_branch") ?? "unknown branch"}";
             case "TaskNotification":
                 return $"Background task notification: {d.S("summary") ?? "task finished"}";
             case "PromptSubmitted" when r.IsNotification():

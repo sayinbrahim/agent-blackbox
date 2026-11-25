@@ -21,11 +21,11 @@ public static class HookRecorder
     }
 
     /// <summary>Records one hook payload. Returns the project root it wrote to, or null when the project has no .blackbox/. Throws on errors; the caller must swallow them.</summary>
-    public static string? Record(string eventArg, string stdinJson, string? projectDir, string bbxVersion, DateTimeOffset now)
+    public static string? Record(string eventArg, string stdinJson, string? projectDir, string bbxVersion, DateTimeOffset now, string agent = AgentAdapter.ClaudeCode)
     {
-        var input = JsonNode.Parse(stdinJson) as JsonObject ?? throw new InvalidDataException("hook input is not a JSON object");
-        var cwd = input["cwd"] is JsonValue v && v.TryGetValue<string>(out var c) ? c : null;
-        var root = FindRoot(projectDir) ?? FindRoot(cwd);
+        var raw = JsonNode.Parse(stdinJson) as JsonObject ?? throw new InvalidDataException("hook input is not a JSON object");
+        var inputs = AgentAdapter.Normalize(agent, raw, eventArg);
+        var root = FindRoot(projectDir) ?? inputs.Select(i => FindRoot(i["cwd"] is JsonValue v && v.TryGetValue<string>(out var c) ? c : null)).FirstOrDefault(r => r is not null);
         if (root is null)
         {
             return null;
@@ -34,8 +34,12 @@ public static class HookRecorder
         {
             var blackbox = Path.Combine(root, DirName);
             var config = BlackboxConfig.Load(Path.Combine(blackbox, "config.json"));
-            var record = new RecordBuilder(root, config, bbxVersion).Build(input, eventArg, now);
-            new SessionStore(blackbox).Append(record, now);
+            var builder = new RecordBuilder(root, config, bbxVersion);
+            var store = new SessionStore(blackbox);
+            foreach (var input in inputs)
+            {
+                store.Append(builder.Build(input, eventArg, now), now);
+            }
             return root;
         }
         catch (Exception ex)

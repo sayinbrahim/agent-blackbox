@@ -16,7 +16,7 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
         "tool_name", "tool_input", "tool_response", "tool_use_id", "duration_ms", "prompt", "source", "model", "reason",
         "stop_hook_active", "last_assistant_message", "error", "is_interrupt", "agent_id", "agent_type", "session_title",
         "background_tasks", "session_crons", "seconds_since_last_response", "context_tokens", "prompt_cache_likely_expired",
-        "estimated_cache_write_usd", "error_details", "agent_transcript_path", "mcp_server", "guard_rule", "guard_reason",
+        "estimated_cache_write_usd", "error_details", "agent_transcript_path", "mcp_server", "guard_rule", "guard_reason", "bbx_agent", "bbx_exit_unknown", "agent_tool",
     ];
 
     private readonly Redactor? _redactor = config.RedactionEnabled ? new Redactor(config.ExtraPatterns, Redactor.PersonalLiterals()) : null;
@@ -41,6 +41,10 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
                 data["git_branch"] = branch;
                 data["git_head"] = head;
                 data["bbx_version"] = bbxVersion;
+                if (Str(input, "bbx_agent") is { } agent)
+                {
+                    data["agent"] = agent;
+                }
                 break;
             case "SessionEnd":
                 kind = "SessionEnded";
@@ -124,8 +128,9 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
     {
         var toolInput = input["tool_input"] as JsonObject;
         var response = input["tool_response"];
-        Copy(input, data, "tool_use_id", "duration_ms");
-        data["success"] = !failed;
+        Copy(input, data, "tool_use_id", "duration_ms", "agent_tool");
+        var exitUnknown = input["bbx_exit_unknown"] is JsonValue u && u.TryGetValue<bool>(out var unknown) && unknown;
+        data["success"] = exitUnknown ? null : !failed; // the agent did not report how the command ended
         data["input"] = SummarizeInput(toolInput);
         if (failed)
         {
@@ -143,6 +148,9 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
         {
             case "Read":
                 return "FileRead";
+            case "Delete":
+                data["file"] = Rel(Str(toolInput, "file_path") ?? "", out _);
+                return "FileDeleted";
             case "Edit" or "Write" or "NotebookEdit":
                 if (failed)
                 {
@@ -153,7 +161,10 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
                 var command = Str(toolInput, "command") ?? "";
                 if (!failed)
                 {
-                    data["exit_code"] = 0;
+                    if (!exitUnknown)
+                    {
+                        data["exit_code"] = 0;
+                    }
                     if (response is JsonObject r)
                     {
                         data["output_tail"] = Tail(Str(r, "stdout") ?? "", 1024);

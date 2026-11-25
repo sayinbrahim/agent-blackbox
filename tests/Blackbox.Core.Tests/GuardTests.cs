@@ -154,7 +154,7 @@ public class GuardTests
 
         var outcome = Guard.Check(input.ToJsonString(), p.Root)!;
         Assert.Equal("force-push", outcome.Block.Rule.Id);
-        Guard.Record(outcome, input.ToJsonString(), "test", DateTimeOffset.UnixEpoch);
+        Guard.Record(outcome, "test", DateTimeOffset.UnixEpoch);
 
         var record = JsonNode.Parse(File.ReadAllLines(Directory.GetFiles(p.Path(".blackbox", "sessions")).Single()).Single())!.AsObject();
         Assert.Equal("GuardBlocked", record.Event());
