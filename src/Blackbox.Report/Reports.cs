@@ -17,7 +17,7 @@ internal static class Fmt
 
     public static string Chain(SessionLog s) => s.Verify.Ok ? $"✔ verified ({s.Verify.Records} records)" : $"✖ tampered: {s.Verify.Error}";
 
-    public static bool Failed(JsonObject r) => r.Event() == "PostToolUseFailure";
+    public static bool Failed(JsonObject r) => r.Event() == "PostToolUseFailure" || r.Kind() == "ToolBlocked";
 
     public static bool IsSystem(JsonObject r) => r.Kind() is "SessionStarted" or "SessionEnded" or "AgentStopped" || r.IsNotification();
 

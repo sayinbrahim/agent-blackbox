@@ -18,6 +18,11 @@ public static class Program
             using var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
             return RunHook(args.Length > 1 ? args[1] : "", stdin, Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"));
         }
+        if (args.Length > 0 && args[0] == "guard")
+        {
+            using var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
+            return RunGuard(stdin, Console.Error, Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"));
+        }
         Console.OutputEncoding = new UTF8Encoding(false);
         return BuildCommand().Parse(args).Invoke();
     }
@@ -66,6 +71,58 @@ public static class Program
         return 0;
     }
 
+    /// <summary>
+    /// Pre-flight check for a PreToolUse event: exit 2 with the reason on stderr blocks the tool call.
+    /// Anything that goes wrong (bad input, bad config, slow disk) allows the call: a broken guard must not stop the agent.
+    /// </summary>
+    public static int RunGuard(TextReader stdin, TextWriter stderr, string? projectDir)
+    {
+        var now = DateTimeOffset.UtcNow;
+        string? root = null;
+        try
+        {
+            var json = stdin.ReadToEnd();
+            var check = Task.Run(() =>
+            {
+                try
+                {
+                    return Blackbox.Core.Guard.Check(json, projectDir);
+                }
+                catch (Exception ex)
+                {
+                    root = HookRecorder.FindRoot(projectDir) ?? HookRecorder.FindRoot(Environment.CurrentDirectory);
+                    if (root is not null)
+                    {
+                        HookRecorder.LogError(root, ex, now);
+                    }
+                    return null;
+                }
+            });
+            if (!check.Wait(TimeSpan.FromSeconds(2)) || check.Result is not { } outcome)
+            {
+                return 0;
+            }
+            var record = Task.Run(() =>
+            {
+                try
+                {
+                    Blackbox.Core.Guard.Record(outcome, json, Version, now);
+                }
+                catch (Exception ex)
+                {
+                    HookRecorder.LogError(outcome.Root, ex, now);
+                }
+            });
+            record.Wait(TimeSpan.FromSeconds(1)); // the block stands even if recording it fails
+            stderr.WriteLine(Blackbox.Core.Guard.Message(outcome.Block));
+            return 2;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     private static RootCommand BuildCommand()
     {
         var root = new RootCommand("bbx - a flight recorder for AI coding agents.");
@@ -73,13 +130,14 @@ public static class Program
         var uninstall = new Option<bool>("--uninstall") { Description = "Remove bbx hooks from .claude/settings.json and .claude/settings.local.json." };
         var local = new Option<bool>("--local") { Description = "Write hooks to .claude/settings.local.json with the absolute path of this bbx binary." };
         var @private = new Option<bool>("--private") { Description = "Add .blackbox/ to .gitignore so recordings stay on this machine." };
-        var init = new Command("init", "Set up .blackbox/ and install Claude Code hooks in this project.") { uninstall, local, @private };
+        var guard = new Option<bool>("--guard") { Description = "Also install the pre-flight guard: a PreToolUse hook that blocks force pushes, deleted migrations and the rules in config.json." };
+        var init = new Command("init", "Set up .blackbox/ and install Claude Code hooks in this project.") { uninstall, local, @private, guard };
         init.SetAction(r =>
         {
             var dir = Environment.CurrentDirectory;
             var messages = r.GetValue(uninstall)
                 ? Installer.Uninstall(dir)
-                : Installer.Install(dir, r.GetValue(local), r.GetValue(@private), Environment.ProcessPath);
+                : Installer.Install(dir, r.GetValue(local), r.GetValue(@private), Environment.ProcessPath, r.GetValue(guard));
             foreach (var m in messages)
             {
                 Console.WriteLine(m);
@@ -137,6 +195,9 @@ public static class Program
 
         var hook = new Command("hook","Record one Claude Code hook event from stdin (called by Claude Code).") { new Argument<string>("event") };
         root.Subcommands.Add(hook); // listed for --help; handled by the fast path in Main
+
+        var guardCmd = new Command("guard", "Check one PreToolUse event from stdin against the guard rules; exit 2 blocks it (called by Claude Code).");
+        root.Subcommands.Add(guardCmd); // listed for --help; handled by the fast path in Main
 
         return root;
     }

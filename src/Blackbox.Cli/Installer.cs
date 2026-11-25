@@ -12,8 +12,9 @@ public static partial class Installer
     public static readonly string[] Events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd"];
     private static readonly HashSet<string> ToolEvents = ["PreToolUse", "PostToolUse", "PostToolUseFailure"];
     private const int HookTimeoutSeconds = 5;
+    public const string GuardMatcher = "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit";
 
-    public static List<string> Install(string root, bool local, bool makePrivate, string? processPath)
+    public static List<string> Install(string root, bool local, bool makePrivate, string? processPath, bool guard = false)
     {
         var log = new List<string>();
         var blackbox = Path.Combine(root, HookRecorder.DirName);
@@ -51,7 +52,7 @@ public static partial class Installer
         {
             var groups = hooks[evt] as JsonArray ?? new JsonArray();
             hooks[evt] = groups;
-            if (groups.OfType<JsonObject>().Any(g => (g["hooks"] as JsonArray ?? []).Any(IsOurs)))
+            if (groups.OfType<JsonObject>().Any(g => (g["hooks"] as JsonArray ?? []).Any(h => IsOurs(h) && !IsGuard(h))))
             {
                 continue; // idempotent
             }
@@ -68,6 +69,26 @@ public static partial class Installer
             });
             groups.Add((JsonNode)group);
             added++;
+        }
+
+        if (guard)
+        {
+            var pre = (JsonArray)hooks["PreToolUse"]!;
+            if (!pre.OfType<JsonObject>().Any(g => (g["hooks"] as JsonArray ?? []).Any(IsGuard)))
+            {
+                pre.Add((JsonNode)new JsonObject
+                {
+                    ["matcher"] = GuardMatcher,
+                    ["hooks"] = new JsonArray(new JsonObject
+                    {
+                        ["type"] = "command",
+                        ["command"] = $"{prefix} guard",
+                        ["timeout"] = HookTimeoutSeconds,
+                    }),
+                });
+                added++;
+                log.Add("Guard on: force pushes, deleted migrations and edits to recordings are blocked. Add rules under \"guard\" in .blackbox/config.json.");
+            }
         }
 
         if (added > 0)
@@ -156,8 +177,14 @@ public static partial class Installer
     public static bool IsOurs(JsonNode? hook) =>
         hook?["command"] is JsonValue v && v.TryGetValue<string>(out var cmd) && OurCommand().IsMatch(cmd);
 
-    [GeneratedRegex(@"bbx(?:\.exe)?""?\s+hook\s+\w+\s*$", RegexOptions.IgnoreCase)]
+    public static bool IsGuard(JsonNode? hook) =>
+        hook?["command"] is JsonValue v && v.TryGetValue<string>(out var cmd) && GuardCommand().IsMatch(cmd);
+
+    [GeneratedRegex(@"bbx(?:\.exe)?""?\s+(?:hook\s+\w+|guard)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex OurCommand();
+
+    [GeneratedRegex(@"bbx(?:\.exe)?""?\s+guard\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex GuardCommand();
 
     private static JsonObject LoadSettings(string path)
     {

@@ -68,7 +68,7 @@ public static class Readers
                 : c.Amber(g.Resumed ? "(resumed, no prompt yet)" : "(before first prompt)"));
             foreach (var r in g.Actions)
             {
-                var failed = r.Event() == "PostToolUseFailure";
+                var failed = r.Event() == "PostToolUseFailure" || r.Kind() == "ToolBlocked";
                 var system = r.Kind() is "SessionStarted" or "SessionEnded" or "AgentStopped" || r.IsNotification();
                 var mark = failed ? c.Red("✖") : system ? c.Dim("·") : c.Green("✔");
                 var text = SessionAnalysis.Describe(r);

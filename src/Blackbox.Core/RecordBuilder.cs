@@ -16,7 +16,7 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
         "tool_name", "tool_input", "tool_response", "tool_use_id", "duration_ms", "prompt", "source", "model", "reason",
         "stop_hook_active", "last_assistant_message", "error", "is_interrupt", "agent_id", "agent_type", "session_title",
         "background_tasks", "session_crons", "seconds_since_last_response", "context_tokens", "prompt_cache_likely_expired",
-        "estimated_cache_write_usd", "error_details", "agent_transcript_path", "mcp_server",
+        "estimated_cache_write_usd", "error_details", "agent_transcript_path", "mcp_server", "guard_rule", "guard_reason",
     ];
 
     private readonly Redactor? _redactor = config.RedactionEnabled ? new Redactor(config.ExtraPatterns, Redactor.PersonalLiterals()) : null;
@@ -76,6 +76,13 @@ public sealed class RecordBuilder(string root, BlackboxConfig config, string bbx
                 break;
             case "PreToolUse":
                 Copy(input, data, "tool_use_id");
+                data["input"] = SummarizeInput(input["tool_input"] as JsonObject);
+                break;
+            case "GuardBlocked":
+                kind = "ToolBlocked";
+                Copy(input, data, "tool_use_id");
+                data["rule"] = Str(input, "guard_rule");
+                data["reason"] = Str(input, "guard_reason");
                 data["input"] = SummarizeInput(input["tool_input"] as JsonObject);
                 break;
             case "PostToolUse":

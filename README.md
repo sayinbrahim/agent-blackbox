@@ -72,7 +72,7 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 
 | Command | What it does |
 |---|---|
-| `bbx init [--local] [--private]` | Creates `.blackbox/` and merges hooks into `.claude/settings.json` (`--local`: `settings.local.json` with this binary's absolute path). Keeps existing settings, backs them up first, and does nothing the second time. |
+| `bbx init [--local] [--private] [--guard]` | Creates `.blackbox/` and merges hooks into `.claude/settings.json` (`--local`: `settings.local.json` with this binary's absolute path). Keeps existing settings, backs them up first, and does nothing the second time. `--guard` also installs the pre-flight guard. |
 | `bbx init --uninstall` | Removes the bbx hooks. Leaves `.blackbox/` alone. |
 | `bbx verify` | Recomputes every hash chain and checks the chain heads anchored in git commits. Exit code 1 if a record was edited, deleted or reordered, or a log no longer matches its anchor. |
 | `bbx anchor [--install-hook [--local]]` | Prints `Blackbox-Head` trailers for the staged session logs, or installs the git hook that adds them to every commit. |
@@ -83,6 +83,7 @@ Nothing leaves your machine. Before `bbx` writes a record, it redacts API keys, 
 | `bbx investigate --commit <sha>` | The recorded sessions behind a commit, with the prompts, the build and test evidence at commit time, and any changed files that no session explains. |
 | `bbx check [--require-trace <regex>] [--require-tests] [--base <ref>]` | CI gate for AI-written code. Exit code 1 when a rule fails or a session log fails chain verification. See below. |
 | `bbx hook <event>` | Called by Claude Code. Always exits 0 and never prints, so the recorder can't break the agent. |
+| `bbx guard` | Called by Claude Code before a tool runs, when the guard is installed. Exit code 2 blocks the call and tells the agent why. Any error allows the call. |
 
 `session` is an id prefix and defaults to the latest session.
 
@@ -119,6 +120,33 @@ Inputs: `require-trace`, `require-tests`, `base` (defaults to the pull request's
 ```
 
 The check can only see what was recorded. Code from a session nobody recorded counts as human, so pair it with `.blackbox/` committed in the repository.
+
+### Pre-flight guard
+
+Recording tells you what went wrong afterwards. The guard stops a few things before they happen. It is opt-in: `bbx init --guard` adds a `PreToolUse` hook that checks Bash, PowerShell and file-edit calls, and blocks the call when a rule matches. The agent is told which rule matched and why, and the block shows up in `bbx timeline` and the report.
+
+Default rules:
+
+| Rule | Blocks |
+|---|---|
+| `force-push` | `git push --force`, `-f` and `+branch` refspecs. `--force-with-lease` is allowed. |
+| `drop-database` | `dotnet ef database drop` |
+| `delete-migrations` | `rm`, `del`, `Remove-Item` or `git rm` on anything under a `Migrations/` folder |
+| `protect-recordings` | Edits to, or deletion of, `.blackbox/sessions/` |
+
+Turn defaults off and add your own in `.blackbox/config.json`. `command` is a regex on the command line (text inside quotes is ignored), `edit` and `delete` take globs:
+
+```json
+"guard": {
+  "disable": ["drop-database"],
+  "rules": [
+    { "id": "no-env", "edit": [".env*", "**/secrets/**"], "reason": "Secrets stay with humans." },
+    { "id": "no-hard-reset", "command": "git\\s+reset\\s+--hard" }
+  ]
+}
+```
+
+The guard is a seatbelt against accidents, not a security boundary. It reads the command line as written: a script, `bash -c "..."`, a variable or a `cd` it doesn't follow gets past it. A broken rule or a crash allows the call and goes to `.blackbox/errors.log`, so a bad config never stops the agent.
 
 ### Verification freshness
 
@@ -179,7 +207,7 @@ The same build without AOT takes 181 ms on the Windows desktop. macOS runners ar
 
 v0.2 brings `bbx check`, its GitHub Action and chain-head anchoring in commit trailers (all described above).
 
-v0.3 is about prevention: an opt-in pre-flight checklist that can stop dangerous actions such as `git push --force` before they run. It also adds adapters for agents other than Claude Code and a VS Code extension that marks AI-written lines in the gutter.
+v0.3 is about prevention and reach: the pre-flight guard (described above), a VS Code extension that marks AI-written lines in the gutter, and adapters for agents other than Claude Code.
 
 ## Build from source
 

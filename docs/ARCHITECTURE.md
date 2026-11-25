@@ -18,6 +18,8 @@ Claude Code hook --stdin JSON--> bbx hook <event> --append + hash chain--> .blac
 
 The recorder never brings the aircraft down. `bbx hook` always exits 0 and never writes to stdout. Errors go to `.blackbox/errors.log`.
 
+The opt-in guard (`bbx guard`) is the only command that can stop a tool call: exit code 2 with the reason on stderr. It is a separate hook, so the recorder's behaviour does not change. It fails open: bad input, a bad rule, or a check slower than 2 seconds allows the call. A block is recorded as a `ToolBlocked` record (event `GuardBlocked`).
+
 ## Record format
 
 One JSON object per line, written in canonical form. Fields: `v`, `seq`, `ts`, `session`, `event` (raw hook name), `kind` (semantic type, omitted for `PreToolUse` and tools without one), `actor` (`agent`, `human`, `system`), `tool`, `prompt_seq`, `data`, `raw_extra` (unknown payload fields, for forward compatibility), `prev`, `hash`.
