@@ -232,3 +232,91 @@ public class InstallerTests
     public void IsOurs(string command, bool expected) =>
         Assert.Equal(expected, Installer.IsOurs(new JsonObject { ["command"] = command }));
 }
+
+public class GuardEndToEndTests
+{
+    private static string Input(string root, string command) => new JsonObject
+    {
+        ["session_id"] = "s1",
+        ["hook_event_name"] = "PreToolUse",
+        ["cwd"] = root,
+        ["tool_name"] = "Bash",
+        ["tool_input"] = new JsonObject { ["command"] = command },
+        ["tool_use_id"] = "toolu_1",
+    }.ToJsonString();
+
+    private static (int Exit, string Stderr) Run(string root, string stdin)
+    {
+        using var err = new StringWriter();
+        return (Program.RunGuard(new StringReader(stdin), err, root), err.ToString());
+    }
+
+    [Fact]
+    public void Blocks_WithExit2_AndReasonOnStderr_AndRecordsIt()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, guard: true);
+
+        var (exit, stderr) = Run(p.Root, Input(p.Root, "git push --force origin main"));
+
+        Assert.Equal(2, exit);
+        Assert.Contains("bbx guard blocked this Bash call (rule 'force-push'", stderr);
+        var record = JsonNode.Parse(File.ReadAllLines(Directory.GetFiles(p.Path(".blackbox", "sessions")).Single()).Single())!;
+        Assert.Equal("ToolBlocked", record["kind"]!.GetValue<string>());
+        Assert.False(File.Exists(p.Path(".blackbox", "errors.log")));
+    }
+
+    [Fact]
+    public void Allows_OrdinaryCommands_Silently()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, guard: true);
+        Assert.Equal((0, ""), Run(p.Root, Input(p.Root, "git push origin main")));
+        Assert.Empty(Directory.GetFiles(p.Path(".blackbox", "sessions")));
+    }
+
+    [Theory]
+    [InlineData("""{ "guard": { "rules": [ { "id": "x", "command": "(" } ] } }""")]
+    [InlineData("not json")]
+    public void BrokenConfig_AllowsTheCall_AndLogs(string config)
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null, guard: true);
+        File.WriteAllText(p.Path(".blackbox", "config.json"), config);
+
+        Assert.Equal((0, ""), Run(p.Root, Input(p.Root, "git push --force")));
+        Assert.True(File.Exists(p.Path(".blackbox", "errors.log")));
+    }
+
+    [Fact]
+    public void BadInput_OrNoBlackbox_AllowsTheCall()
+    {
+        using var p = new TempProject();
+        Assert.Equal((0, ""), Run(p.Root, Input(p.Root, "git push --force")));
+        Assert.Equal((0, ""), Run(p.Root, "{ broken"));
+    }
+
+    [Fact]
+    public void Install_AddsGuardOnce_KeepsRecorder_AndUninstallRemovesBoth()
+    {
+        using var p = new TempProject();
+        Installer.Install(p.Root, false, false, null);
+        Installer.Install(p.Root, false, false, null, guard: true);
+        Installer.Install(p.Root, false, false, null, guard: true);
+
+        var pre = JsonNode.Parse(File.ReadAllText(p.Path(".claude", "settings.json")))!["hooks"]!["PreToolUse"]!.AsArray();
+        Assert.Equal(2, pre.Count);
+        Assert.Equal("bbx hook PreToolUse", pre[0]!["hooks"]![0]!["command"]!.GetValue<string>());
+        Assert.Equal("bbx guard", pre[1]!["hooks"]![0]!["command"]!.GetValue<string>());
+        Assert.Equal(Installer.GuardMatcher, pre[1]!["matcher"]!.GetValue<string>());
+
+        // guard first, recorder later: the recorder still gets installed
+        using var q = new TempProject();
+        Installer.Install(q.Root, false, false, null, guard: true);
+        var pre2 = JsonNode.Parse(File.ReadAllText(q.Path(".claude", "settings.json")))!["hooks"]!["PreToolUse"]!.AsArray();
+        Assert.Equal(2, pre2.Count);
+
+        Installer.Uninstall(p.Root);
+        Assert.Null(JsonNode.Parse(File.ReadAllText(p.Path(".claude", "settings.json")))!["hooks"]);
+    }
+}
