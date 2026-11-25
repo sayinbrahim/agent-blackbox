@@ -1,0 +1,70 @@
+{
+  "name": "agent-blackbox",
+  "displayName": "agent-blackbox",
+  "description": "Marks AI-written lines in the gutter, with the session and prompt behind each one, from the recordings of agent-blackbox (bbx).",
+  "version": "0.3.0",
+  "publisher": "sayinbrahim",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sayinbrahim/agent-blackbox"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "ai",
+    "claude-code",
+    "provenance",
+    "blame",
+    "audit"
+  ],
+  "activationEvents": [
+    "workspaceContains:.blackbox/config.json"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentBlackbox.toggle",
+        "title": "Toggle AI line markers",
+        "category": "agent-blackbox"
+      },
+      {
+        "command": "agentBlackbox.refresh",
+        "title": "Refresh AI line markers",
+        "category": "agent-blackbox"
+      }
+    ],
+    "configuration": {
+      "title": "agent-blackbox",
+      "properties": {
+        "agentBlackbox.bbxPath": {
+          "type": "string",
+          "default": "bbx",
+          "description": "Path to the bbx binary (0.3.0 or later). Default: bbx on PATH."
+        },
+        "agentBlackbox.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show AI line markers."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "test": "tsc -p . && node --test out/test/blame.test.js",
+    "package": "npx --yes @vscode/vsce@4.1.0 package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/vscode": "1.90.0",
+    "@vscode/test-electron": "3.1.0",
+    "typescript": "5.9.3"
+  }
+}
