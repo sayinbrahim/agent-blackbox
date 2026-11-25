@@ -28,7 +28,7 @@ export async function run(): Promise<void> {
   const editor = vscode.window.activeTextEditor!;
   await editor.edit((b) => b.insert(new vscode.Position(0, 0), "// edit\n"));
   assert.ok(editor.document.isDirty);
-  await vscode.commands.executeCommand("workbench.action.revertFile");
+  await vscode.commands.executeCommand("workbench.action.files.revert");
   if (process.env.BBX_TEST_OUT) {
     fs.writeFileSync(process.env.BBX_TEST_OUT, `ok ${summary}
 `);

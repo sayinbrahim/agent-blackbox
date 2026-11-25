@@ -488,3 +488,4 @@ $RECYCLE.BIN/
 # VS Code extension build output
 vscode/out/
 *.vsix
+vscode/.vscode-test/
