@@ -1,7 +1,9 @@
 name: release
 
-# A v* tag builds Native AOT binaries and NuGet tool packages on each OS, checks that the tool installs and records,
-# then publishes to nuget.org (trusted publishing, no stored API key) and creates the GitHub Release.
+# A v* tag builds Native AOT binaries, NuGet tool packages and the VS Code extension, checks that the tool installs and
+# records, then publishes to nuget.org (trusted publishing, no stored API key) and creates the GitHub Release with the
+# binaries and the .vsix. The extension also goes to the VS Code Marketplace / Open VSX when the VSCE_PAT / OVSX_PAT
+# secrets are set; without them those steps are skipped.
 # Pull requests that touch packaging run the same jobs as a dry run (nothing is published).
 # Running it by hand (workflow_dispatch) only checks that nuget.org trusted publishing accepts this workflow.
 on:
@@ -15,6 +17,7 @@ on:
       - Directory.Build.props
       - global.json
       - scripts/release-notes.sh
+      - vscode/package.json
 
 permissions:
   contents: read
@@ -122,8 +125,33 @@ jobs:
           path: nupkg/*.nupkg
           if-no-files-found: error
 
+  vsix:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Take the version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - run: npm test
+      - run: mkdir -p ../dist && npx --yes @vscode/vsce@4.1.0 package --no-dependencies -o ../dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: dist/*.vsix
+          if-no-files-found: error
+
   verify:
-    needs: [version, native, pointer]
+    needs: [version, native, pointer, vsix]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -145,6 +173,7 @@ jobs:
           test -f "artifacts/AgentBlackbox.$VERSION.nupkg"
           test -f "artifacts/bbx-$VERSION-win-x64.zip"
           for rid in linux-x64 osx-arm64 osx-x64; do test -f "artifacts/bbx-$VERSION-$rid.tar.gz"; done
+          ls artifacts/agent-blackbox-*.vsix
       - name: Install the tool from the built packages and record one event
         run: |
           set -euo pipefail
@@ -196,4 +225,19 @@ jobs:
           set -euo pipefail
           bash scripts/release-notes.sh "$VERSION" > notes.md
           pre=""; [[ "$VERSION" == *-* ]] && pre="--prerelease"
-          gh release create "v$VERSION" artifacts/*.zip artifacts/*.tar.gz --title "v$VERSION" --notes-file notes.md $pre
+          gh release create "v$VERSION" artifacts/*.zip artifacts/*.tar.gz artifacts/*.vsix --title "v$VERSION" --notes-file notes.md $pre
+      # Optional: each runs only when its token is set as a repository secret.
+      - name: Publish to the VS Code Marketplace
+        if: ${{ !contains(env.VERSION, '-') }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then echo "VSCE_PAT not set; skipping the Marketplace."; exit 0; fi
+          npx --yes @vscode/vsce@4.1.0 publish --packagePath artifacts/agent-blackbox-$VERSION.vsix
+      - name: Publish to Open VSX
+        if: ${{ !contains(env.VERSION, '-') }}
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then echo "OVSX_PAT not set; skipping Open VSX."; exit 0; fi
+          npx --yes ovsx@1.3.0 publish artifacts/agent-blackbox-$VERSION.vsix
