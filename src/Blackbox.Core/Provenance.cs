@@ -154,9 +154,9 @@ public static class Investigator
         return set;
     }
 
-    private static string Git(string root, params string[] args) => Encoding.UTF8.GetString(GitBytes(root, args));
+    internal static string Git(string root, params string[] args) => Encoding.UTF8.GetString(GitBytes(root, args));
 
-    private static byte[] GitBytes(string root, params string[] args)
+    internal static byte[] GitBytes(string root, params string[] args)
     {
         var psi = new ProcessStartInfo("git") { WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         foreach (var a in args)

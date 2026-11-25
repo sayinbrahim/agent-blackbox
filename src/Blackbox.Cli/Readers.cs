@@ -165,6 +165,72 @@ public static class Readers
         return 0;
     }
 
+    /// <summary>The CI gate. Exit code 1 when a rule fails or a session log fails chain verification.</summary>
+    public static int Check(string dir, string? trace, bool requireTests, string? baseRef, TextWriter o, Ansi c)
+    {
+        var (root, config, sessions) = Open(dir);
+        System.Text.RegularExpressions.Regex? regex = null;
+        if (trace is not null)
+        {
+            try
+            {
+                regex = new(trace, System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
+            }
+            catch (ArgumentException ex)
+            {
+                throw new InvalidOperationException($"Invalid --require-trace pattern: {ex.Message}");
+            }
+        }
+        var r = Checker.Run(root, sessions, config, new(regex, requireTests, baseRef));
+
+        var rules = new List<string>();
+        if (trace is not null)
+        {
+            rules.Add($"trace /{trace}/");
+        }
+        if (requireTests)
+        {
+            rules.Add("tests");
+        }
+        var scope = baseRef is null ? "all recorded AI code" : $"AI lines added since {baseRef}";
+        o.WriteLine(c.Bold("bbx check") + c.Dim($" · {scope} · {r.Files.Count} file(s), {r.Files.Sum(f => f.AiLines)} line(s) · rules: {(rules.Count == 0 ? "none" : string.Join(", ", rules))}"));
+
+        if (r.Files.Count > 0)
+        {
+            var width = Math.Max(4, r.Files.Max(f => f.File.Length));
+            o.WriteLine();
+            o.WriteLine(c.Dim($"  {"FILE".PadRight(width)}  {"AI LINES",8}  {"TRACE",-16} TESTS"));
+            foreach (var f in r.Files)
+            {
+                var traceCell = f.Traced is null ? "-" : f.Traced == true ? string.Join(",", f.TraceIds) : "✖ untraced";
+                var testCell = !requireTests || f.HasTests is null ? "-" : f.HasTests == true ? "ok" : "✖ none";
+                var traceText = traceCell.StartsWith('✖') ? c.Red(traceCell.PadRight(16)) : traceCell.PadRight(16);
+                var testText = testCell.StartsWith('✖') ? c.Red(testCell) : testCell;
+                o.WriteLine($"  {f.File.PadRight(width)}  {f.AiLines,8}  {traceText} {testText}");
+                if (f.TraceIssue is not null)
+                {
+                    var where = string.Join("; ", f.Origins.GroupBy(x => x.Session).Select(g =>
+                        $"session {g.Key.ShortId} prompt {string.Join(", ", g.Select(x => x.Prompt is { } p ? "#" + g.Key.PromptNumber(p) : "?").Distinct())}"));
+                    o.WriteLine(c.Dim($"  {"".PadRight(width)}  {f.TraceIssue} ({where})"));
+                }
+            }
+        }
+
+        o.WriteLine();
+        o.WriteLine(r.BrokenChains.Count == 0
+            ? c.Dim($"Record integrity: {sessions.Count} session log(s), hash chains verified")
+            : c.Red($"Record integrity: {string.Join(", ", r.BrokenChains.Select(s => $"{s.ShortId} ({s.Verify.Error})"))}"));
+        foreach (var line in r.Summary())
+        {
+            o.WriteLine(c.Red("FAIL  ") + line);
+        }
+        if (r.Passed)
+        {
+            o.WriteLine(c.Green("PASS  ") + (rules.Count == 0 ? "No rules given; listing only." : "Every file with AI code meets the rules."));
+        }
+        return r.Passed ? 0 : 1;
+    }
+
     public static int Investigate(string dir, string commit, string? output, TextWriter o)
     {
         var (root, config, sessions) = Open(dir);

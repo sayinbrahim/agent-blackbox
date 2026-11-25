@@ -9,6 +9,33 @@ public sealed class TempProject : IDisposable
 
     public string Path(params string[] parts) => System.IO.Path.Combine([Root, .. parts]);
 
+    /// <summary>Runs git in the project and fails the test on a non-zero exit.</summary>
+    public void Git(params string[] args)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("git") { WorkingDirectory = Root, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var a in args)
+        {
+            psi.ArgumentList.Add(a);
+        }
+        using var proc = System.Diagnostics.Process.Start(psi)!;
+        proc.StandardOutput.ReadToEnd();
+        var err = proc.StandardError.ReadToEnd();
+        proc.WaitForExit();
+        if (proc.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"git {string.Join(' ', args)}: {err}");
+        }
+    }
+
+    /// <summary>git init with a fixed identity and no line-ending conversion.</summary>
+    public void GitInit()
+    {
+        Git("init", "-q");
+        Git("config", "user.email", "t@example.com");
+        Git("config", "user.name", "t");
+        Git("config", "core.autocrlf", "false");
+    }
+
     public void Dispose()
     {
         try
