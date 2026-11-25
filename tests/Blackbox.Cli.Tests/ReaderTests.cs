@@ -89,6 +89,24 @@ public class ReaderTests
         Assert.Contains("Tool    : Edit at 10:11:00", line);
     }
 
+    [Fact]
+    public void Blame_Json_ListsAiLinesForEditors()
+    {
+        using var p = Recorded();
+        var json = System.Text.Json.Nodes.JsonNode.Parse(Run(w => Readers.BlameJson(p.Root, p.Path("src", "Order.cs"), w)))!;
+
+        Assert.Equal("src/Order.cs", json["file"]!.GetValue<string>());
+        Assert.Equal(100, json["ai_percent"]!.GetValue<int>());
+        var lines = json["lines"]!.AsArray();
+        Assert.Equal([1, 3], lines.Select(l => l!["line"]!.GetValue<int>()));
+        var l3 = lines[1]!;
+        Assert.Equal("sess-000", l3["session"]!.GetValue<string>()[..8]);
+        Assert.Equal(1, l3["prompt"]!.GetValue<int>());
+        Assert.Equal("Add <retry> & backoff", l3["prompt_text"]!.GetValue<string>());
+        Assert.Equal("Edit", l3["tool"]!.GetValue<string>());
+        Assert.EndsWith("10:11:00.000Z", l3["ts"]!.GetValue<string>());
+    }
+
     [Theory]
     [InlineData("src/a.cs:57", "src/a.cs", 57)]
     [InlineData(@"C:\repo\a.cs", @"C:\repo\a.cs", null)]

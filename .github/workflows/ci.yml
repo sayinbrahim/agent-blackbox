@@ -43,3 +43,31 @@ jobs:
         with:
           bbx-path: ${{ runner.os == 'Windows' && 'out/bbx.exe' || 'out/bbx' }}
           require-tests: "true"
+
+  vscode:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+      # A real VS Code, with the extension, on a file this repo's own recordings attribute to the agent.
+      - name: VS Code integration test
+        run: |
+          dotnet build ../src/Blackbox.Cli -c Release -o ../out-bbx
+          file=$(cd .. && for f in $(git ls-files 'src/*.cs'); do n=$(out-bbx/bbx blame "$f" --json | jq '.lines | length'); if [ "$n" -gt 0 ]; then echo "$f"; break; fi; done)
+          echo "file: $file"
+          xvfb-run -a node out/test/runIntegration.js .. "../$file" ../out-bbx/bbx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: vscode/*.vsix

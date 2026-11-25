@@ -169,8 +169,11 @@ public static class Program
         root.Subcommands.Add(timeline);
 
         var blameTarget = new Argument<string>("file") { Description = "File, optionally with :line (e.g. src/Orders/OrderService.cs:57)." };
-        var blame = new Command("blame", "Show which lines were written by the agent, in which session and from which prompt.") { blameTarget };
-        blame.SetAction(r => Guard(() => Readers.Blame(Environment.CurrentDirectory, r.GetValue(blameTarget)!, Console.Out, Ansi.Auto())));
+        var blameJson = new Option<bool>("--json") { Description = "Print the AI-written lines of the file as JSON (for editors)." };
+        var blame = new Command("blame", "Show which lines were written by the agent, in which session and from which prompt.") { blameTarget, blameJson };
+        blame.SetAction(r => Guard(() => r.GetValue(blameJson)
+            ? Readers.BlameJson(Environment.CurrentDirectory, r.GetValue(blameTarget)!, Console.Out)
+            : Readers.Blame(Environment.CurrentDirectory, r.GetValue(blameTarget)!, Console.Out, Ansi.Auto())));
         root.Subcommands.Add(blame);
 
         var reportSession = SessionArg();
